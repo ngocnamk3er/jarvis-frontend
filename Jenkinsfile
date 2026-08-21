@@ -61,11 +61,12 @@ pipeline {
           sh '''
             rm -rf deploy-repo
             git clone "http://${GIT_USER}:${GIT_TOKEN}@gitlab:8929/root/jarvis-deploy.git" deploy-repo
-            cd deploy-repo
+            cd deploy-repo/frontend
             kustomize edit set image jarvis-frontend=host.minikube.internal:5050/root/jarvis-frontend:${IMAGE_TAG}
+            cd ..
             git config user.email "jenkins@localhost"
             git config user.name "jenkins-bot"
-            git add kustomization.yaml
+            git add frontend/kustomization.yaml
             git diff --cached --quiet && echo "no manifest changes" && exit 0
             git commit -m "ci: bump jarvis-frontend to ${IMAGE_TAG}"
             git push "http://${GIT_USER}:${GIT_TOKEN}@gitlab:8929/root/jarvis-deploy.git" HEAD:main
