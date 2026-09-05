@@ -31,6 +31,7 @@ export function ChatWindow() {
     effort: import("@/types/chat").ThinkingEffort
     model?: import("@/types/chat").Model
     subagentModel?: import("@/types/chat").Model
+    webSearch: boolean
   } | null>(null)
   // Set synchronously (a ref, not state) the moment a message is sent, so a
   // brand-new conversation's ChatInput — which remounts as soon as activeId
@@ -41,6 +42,10 @@ export function ChatWindow() {
   // before correcting itself once the state caught up.
   const lastSentModel = useRef<Map<string, string>>(new Map())
   const lastSentSubagentModel = useRef<Map<string, string>>(new Map())
+  // Carried onto resume/clarify so "Web off" survives a bash-approval
+  // interrupt mid-turn (ChatInput's own toggle state doesn't reach resume,
+  // which is triggered from here, not from the input).
+  const lastSentWebSearch = useRef<Map<string, boolean>>(new Map())
 
   const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory } = useChat(activeId)
   const loadingThreadIds = useLoadingThreadIds()
@@ -68,10 +73,11 @@ export function ChatWindow() {
   // Send pending message after activeId is set (new conversation flow)
   useEffect(() => {
     if (activeId && pendingContent.current) {
-      const { content, effort, model, subagentModel } = pendingContent.current
+      const { content, effort, model, subagentModel, webSearch } = pendingContent.current
       if (model) setLastModel(activeId, model.id)
       if (subagentModel) setLastSubagentModel(activeId, subagentModel.id)
-      sendMessage(content, effort, model, subagentModel)
+      lastSentWebSearch.current.set(activeId, webSearch)
+      sendMessage(content, effort, model, subagentModel, webSearch)
       pendingContent.current = null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,13 +109,15 @@ export function ChatWindow() {
     content: string,
     effort: import("@/types/chat").ThinkingEffort = "high",
     model?: import("@/types/chat").Model,
-    subagentModel?: import("@/types/chat").Model
+    subagentModel?: import("@/types/chat").Model,
+    webSearch: boolean = true
   ) => {
     if (!activeId) {
-      pendingContent.current = { content, effort, model, subagentModel }
+      pendingContent.current = { content, effort, model, subagentModel, webSearch }
       const conv = await create(content.slice(0, 50))
       if (model) lastSentModel.current.set(conv.id, model.id)
       if (subagentModel) lastSentSubagentModel.current.set(conv.id, subagentModel.id)
+      lastSentWebSearch.current.set(conv.id, webSearch)
       _historyLoaded.add(conv.id)  // Mark as loaded so we don't fetch history for brand-new thread
       activate(conv.id)
     } else {
@@ -121,7 +129,8 @@ export function ChatWindow() {
         lastSentSubagentModel.current.set(activeId, subagentModel.id)
         setLastSubagentModel(activeId, subagentModel.id)
       }
-      sendMessage(content, effort, model, subagentModel)
+      lastSentWebSearch.current.set(activeId, webSearch)
+      sendMessage(content, effort, model, subagentModel, webSearch)
     }
   }
 
@@ -145,6 +154,12 @@ export function ChatWindow() {
     conversations.find((c) => c.id === activeId)?.last_subagent_model ??
     null
   const resumeSubagentModel = models.find((m) => m.id === resumeSubagentModelId)
+
+  // Ref-during-render, same tradeoff as resumeModelId above. Defaults to
+  // web-on when this thread was never sent from this session (e.g. after a
+  // reload landed on a pending interrupt).
+  // eslint-disable-next-line react-hooks/refs
+  const resumeWebSearch = (activeId ? lastSentWebSearch.current.get(activeId) : undefined) ?? true
 
   // Live value from this session's SSE stream overrides; else fall back to
   // whatever was last persisted (loaded once via useConversations() on
@@ -186,15 +201,15 @@ export function ChatWindow() {
           {pendingHitl && !isLoading && (
             <HitlApproval
               hitl={pendingHitl}
-              onApprove={() => resumeMessage("approve", resumeModel, resumeSubagentModel)}
-              onReject={() => resumeMessage("reject", resumeModel, resumeSubagentModel)}
+              onApprove={() => resumeMessage("approve", resumeModel, resumeSubagentModel, resumeWebSearch)}
+              onReject={() => resumeMessage("reject", resumeModel, resumeSubagentModel, resumeWebSearch)}
             />
           )}
 
           {pendingClarify && !isLoading && (
             <ClarifyRequest
               clarify={pendingClarify}
-              onAnswer={(answer) => resumeClarify(answer, resumeModel, resumeSubagentModel)}
+              onAnswer={(answer) => resumeClarify(answer, resumeModel, resumeSubagentModel, resumeWebSearch)}
             />
           )}
 

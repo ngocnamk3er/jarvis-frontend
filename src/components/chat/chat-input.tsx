@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react"
-import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock } from "lucide-react"
+import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThinkingEffort, Model } from "@/types/chat"
 import { useModels } from "@/hooks/use-models"
@@ -31,7 +31,7 @@ function OpenWeightBadge({ huggingFaceId }: { huggingFaceId: string | null }) {
 }
 
 type Props = {
-  onSend: (content: string, effort: ThinkingEffort, model: Model, subagentModel?: Model) => void
+  onSend: (content: string, effort: ThinkingEffort, model: Model, subagentModel: Model | undefined, webSearch: boolean) => void
   disabled: boolean
   // True specifically while a stream is in flight (a subset of `disabled`,
   // which also covers pendingClarify) — the send button shows Stop instead
@@ -59,6 +59,9 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
   const { models } = useModels()
   const [value, setValue] = useState("")
   const [effort, setEffort] = useState<ThinkingEffort>("high")
+  // Off strips web_search + web_fetch from the agent (and the research
+  // subagent) for the turn — see ChatRequest.web_search in the backend.
+  const [webSearch, setWebSearch] = useState(true)
   const [model, setModel] = useState<Model | null>(null)
   const [subagentModel, setSubagentModel] = useState<Model | null>(null)
   const [effortOpen, setEffortOpen] = useState(false)
@@ -81,7 +84,7 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
     const trimmed = value.trim()
     if (!trimmed || disabled || !model) return
 
-    onSend(trimmed, effort, model, subagentModel ?? undefined)
+    onSend(trimmed, effort, model, subagentModel ?? undefined, webSearch)
     setValue("")
     if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
@@ -233,6 +236,22 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
                   </div>
                 )}
               </div>
+
+              {/* Web search toggle — off removes web_search + web_fetch for
+                  the turn (main agent + research subagent). */}
+              <button
+                onClick={() => setWebSearch((w) => !w)}
+                title={webSearch ? "Web search on — click to disable" : "Web search off — the agent answers without going online"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-colors",
+                  webSearch ? "bg-[#EEF0FF] hover:bg-[#E4E7FF]" : "bg-gray-100 hover:bg-gray-200"
+                )}
+              >
+                <Globe className={cn("size-3 shrink-0", webSearch ? "text-[#5661f6]" : "text-gray-400")} />
+                <span className={cn("text-[11px] font-semibold", webSearch ? "text-[#5661f6]" : "text-gray-400")}>
+                  Web {webSearch ? "on" : "off"}
+                </span>
+              </button>
 
               {/* Model selector */}
               <div ref={modelRef} className="relative">

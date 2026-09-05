@@ -311,7 +311,7 @@ export function useChat(threadId: string | null) {
   }, [])
 
   const sendMessage = useCallback(
-    async (content: string, thinking_effort: ThinkingEffort = "high", model?: Model, subagentModel?: Model) => {
+    async (content: string, thinking_effort: ThinkingEffort = "high", model?: Model, subagentModel?: Model, webSearch: boolean = true) => {
       if (!threadId) return
       _hitl.set(threadId, null)
       _clarify.set(threadId, null)
@@ -333,6 +333,7 @@ export function useChat(threadId: string | null) {
           thinking_effort,
           model: model?.id,
           subagent_model: subagentModel?.id,
+          web_search: webSearch,
         }),
       }).catch(() => null)
 
@@ -349,7 +350,7 @@ export function useChat(threadId: string | null) {
   )
 
   const resumeMessage = useCallback(
-    async (decision: "approve" | "reject", model?: Model, subagentModel?: Model) => {
+    async (decision: "approve" | "reject", model?: Model, subagentModel?: Model, webSearch: boolean = true) => {
       if (!threadId) return
       const msgs = _msgs.get(threadId) ?? []
       let resumeId = ""
@@ -386,6 +387,7 @@ export function useChat(threadId: string | null) {
           decision,
           model: model?.id,
           subagent_model: subagentModel?.id,
+          web_search: webSearch,
         }),
       }).catch(() => null)
 
@@ -402,7 +404,7 @@ export function useChat(threadId: string | null) {
   )
 
   const resumeClarify = useCallback(
-    async (answer: string, model?: Model, subagentModel?: Model) => {
+    async (answer: string, model?: Model, subagentModel?: Model, webSearch: boolean = true) => {
       if (!threadId) return
       const msgs = _msgs.get(threadId) ?? []
       let resumeId = ""
@@ -437,6 +439,7 @@ export function useChat(threadId: string | null) {
           answer,
           model: model?.id,
           subagent_model: subagentModel?.id,
+          web_search: webSearch,
         }),
       }).catch(() => null)
 
