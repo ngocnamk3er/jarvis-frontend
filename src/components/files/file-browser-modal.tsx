@@ -1,8 +1,19 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { ChevronRight, File, Folder, FolderPlus, Loader2, Pencil, Trash2, Upload, X } from "lucide-react"
-import { cn } from "@/lib/utils"
+import {
+  ArrowLeft,
+  ChevronRight,
+  Download,
+  File,
+  Folder,
+  FolderPlus,
+  Loader2,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react"
 import { useFiles } from "@/hooks/use-files"
 import { FileNode } from "@/types/files"
 
@@ -10,6 +21,16 @@ type Props = {
   open: boolean
   onClose: () => void
 }
+
+// What openPreview() resolved a file down to — an object URL for anything
+// the browser can render natively (images, PDFs — no library needed, both
+// display fine in an <img>/<iframe>), extracted plaintext for everything
+// else extraction covers, or "unsupported" for binary/unextractable types
+// (still downloadable, just not previewable).
+type PreviewContent =
+  | { kind: "image" | "pdf"; url: string }
+  | { kind: "text"; text: string }
+  | { kind: "unsupported" }
 
 function formatSize(bytes: number | null): string {
   if (bytes === null) return ""
@@ -27,8 +48,19 @@ function splitPath(path: string): string[] {
   return path.split("/").filter(Boolean)
 }
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function FileBrowserModal({ open, onClose }: Props) {
-  const { loading, listTree, createFolder, uploadFile, renameNode, deleteNode } = useFiles()
+  const { loading, listTree, createFolder, uploadFile, getNode, fetchContent, renameNode, deleteNode } = useFiles()
   const [path, setPath] = useState("/")
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [creatingFolder, setCreatingFolder] = useState(false)
@@ -36,21 +68,36 @@ export function FileBrowserModal({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [previewNode, setPreviewNode] = useState<FileNode | null>(null)
+  const [previewContent, setPreviewContent] = useState<PreviewContent | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
   const refresh = useCallback(async () => {
     setNodes(await listTree(path))
   }, [listTree, path])
 
   useEffect(() => {
     if (open) {
-      // Clearing any stale error from a previous open, and the refresh()
+      // Clearing stale state from a previous open/path, and the refresh()
       // below, both sync with the file-service rather than derive from
       // existing state during render.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(null)
+      setPreviewNode(null)
       refresh()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, path])
+
+  // Object URLs are only released by the browser when explicitly revoked —
+  // release whichever one is showing as soon as it's replaced or the modal
+  // closes, not just on unmount.
+  useEffect(() => {
+    return () => {
+      if (previewContent && "url" in previewContent) URL.revokeObjectURL(previewContent.url)
+    }
+  }, [previewContent])
 
   if (!open) return null
 
@@ -106,6 +153,45 @@ export function FileBrowserModal({ open, onClose }: Props) {
     }
   }
 
+  async function handleDownload(node: FileNode) {
+    try {
+      triggerDownload(await fetchContent(node.id), node.name)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Download failed")
+    }
+  }
+
+  async function openPreview(node: FileNode) {
+    setPreviewNode(node)
+    setPreviewError(null)
+    setPreviewContent(null)
+    setPreviewLoading(true)
+    try {
+      if (node.mime_type?.startsWith("image/")) {
+        setPreviewContent({ kind: "image", url: URL.createObjectURL(await fetchContent(node.id)) })
+      } else if (node.mime_type === "application/pdf") {
+        setPreviewContent({ kind: "pdf", url: URL.createObjectURL(await fetchContent(node.id)) })
+      } else {
+        // Everything else previews from already-extracted text (no raw-bytes
+        // fetch needed) — covers .txt/.md/.pdf-that-failed-image-check/.docx/etc.
+        // Binary/unextractable types (extracted_text null) fall through to
+        // "no preview", but are still downloadable via the button below.
+        const detail = await getNode(node.id)
+        setPreviewContent(detail.extracted_text != null ? { kind: "text", text: detail.extracted_text } : { kind: "unsupported" })
+      }
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : "Failed to load preview")
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  function closePreview() {
+    setPreviewNode(null)
+    setPreviewContent(null)
+    setPreviewError(null)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="flex h-[min(600px,85vh)] w-[min(640px,90vw)] flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
@@ -116,129 +202,190 @@ export function FileBrowserModal({ open, onClose }: Props) {
           </button>
         </div>
 
-        <div className="flex items-center gap-1 border-b border-gray-100 px-5 py-2.5 text-[13px] text-gray-500">
-          <button onClick={() => setPath("/")} className="rounded px-1.5 py-0.5 hover:bg-gray-50 hover:text-gray-900">
-            workspace
-          </button>
-          {segments.map((seg, i) => (
-            <span key={i} className="flex items-center gap-1">
-              <ChevronRight className="size-3 text-gray-300" />
+        {previewNode ? (
+          <>
+            <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-2.5">
               <button
-                onClick={() => setPath("/" + segments.slice(0, i + 1).join("/"))}
-                className="rounded px-1.5 py-0.5 hover:bg-gray-50 hover:text-gray-900"
+                onClick={closePreview}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[13px] text-gray-500 hover:bg-gray-50 hover:text-gray-900"
               >
-                {seg}
+                <ArrowLeft className="size-3.5" />
+                Back
               </button>
-            </span>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          {loading && nodes.length === 0 && (
-            <div className="flex items-center justify-center py-10 text-gray-400">
-              <Loader2 className="size-5 animate-spin" />
-            </div>
-          )}
-
-          {!loading && nodes.length === 0 && (
-            <p className="px-3 py-6 text-center text-[13px] text-gray-400">Empty folder</p>
-          )}
-
-          <ul>
-            {nodes.map((node) => (
-              <li
-                key={node.id}
-                className="group flex items-center gap-2.5 rounded-xl px-3 py-2 hover:bg-gray-50"
+              <span className="truncate text-[13px] font-medium text-gray-700">{previewNode.name}</span>
+              <button
+                onClick={() => handleDownload(previewNode)}
+                className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium text-gray-600 hover:bg-gray-50"
               >
-                <button
-                  onClick={() => node.type === "folder" && setPath(path.replace(/\/$/, "") + "/" + node.name)}
-                  disabled={node.type !== "folder"}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2.5 text-left",
-                    node.type !== "folder" && "cursor-default"
-                  )}
-                >
-                  {node.type === "folder" ? (
-                    <Folder className="size-4 shrink-0 text-[#5661f6]" />
-                  ) : (
-                    <File className="size-4 shrink-0 text-gray-400" />
-                  )}
-                  <span className="truncate text-[13px] font-medium text-gray-700">{node.name}</span>
-                  {node.type === "file" && (
-                    <span className="shrink-0 text-[11px] text-gray-400">{formatSize(node.size_bytes)}</span>
-                  )}
-                  {node.type === "file" && node.indexing_status !== "done" && node.indexing_status !== "skipped" && (
-                    <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
-                      {node.indexing_status}
-                    </span>
-                  )}
-                </button>
-                <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                  <button
-                    onClick={() => handleRename(node)}
-                    className="rounded p-1 text-gray-400 hover:text-gray-700"
-                    title="Rename"
-                  >
-                    <Pencil className="size-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(node)}
-                    className="rounded p-1 text-gray-400 hover:text-red-500"
-                    title="Delete"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {creatingFolder && (
-            <div className="flex items-center gap-2 px-3 py-2">
-              <Folder className="size-4 shrink-0 text-[#5661f6]" />
-              <input
-                autoFocus
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateFolder()
-                  if (e.key === "Escape") setCreatingFolder(false)
-                }}
-                onBlur={() => !newFolderName && setCreatingFolder(false)}
-                placeholder="Folder name"
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-[13px] outline-none focus:border-[#5661f6]"
-              />
+                <Download className="size-3.5" />
+                Download
+              </button>
             </div>
-          )}
-        </div>
+
+            <div className="flex-1 overflow-auto">
+              {previewLoading && (
+                <div className="flex items-center justify-center py-16 text-gray-400">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              )}
+              {previewError && (
+                <p className="px-5 py-6 text-center text-[13px] text-red-500">{previewError}</p>
+              )}
+              {!previewLoading && !previewError && previewContent?.kind === "image" && (
+                <div className="flex h-full items-center justify-center p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- blob: URL, next/image can't optimize it */}
+                  <img src={previewContent.url} alt={previewNode.name} className="max-h-full max-w-full object-contain" />
+                </div>
+              )}
+              {!previewLoading && !previewError && previewContent?.kind === "pdf" && (
+                <iframe src={previewContent.url} title={previewNode.name} className="h-full w-full border-0" />
+              )}
+              {!previewLoading && !previewError && previewContent?.kind === "text" && (
+                <pre className="whitespace-pre-wrap break-words px-5 py-4 text-[12px] leading-relaxed text-gray-700">
+                  {previewContent.text}
+                </pre>
+              )}
+              {!previewLoading && !previewError && previewContent?.kind === "unsupported" && (
+                <p className="px-5 py-16 text-center text-[13px] text-gray-400">
+                  No preview available for this file type — use Download instead.
+                </p>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1 border-b border-gray-100 px-5 py-2.5 text-[13px] text-gray-500">
+              <button onClick={() => setPath("/")} className="rounded px-1.5 py-0.5 hover:bg-gray-50 hover:text-gray-900">
+                workspace
+              </button>
+              {segments.map((seg, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <ChevronRight className="size-3 text-gray-300" />
+                  <button
+                    onClick={() => setPath("/" + segments.slice(0, i + 1).join("/"))}
+                    className="rounded px-1.5 py-0.5 hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    {seg}
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {loading && nodes.length === 0 && (
+                <div className="flex items-center justify-center py-10 text-gray-400">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              )}
+
+              {!loading && nodes.length === 0 && (
+                <p className="px-3 py-6 text-center text-[13px] text-gray-400">Empty folder</p>
+              )}
+
+              <ul>
+                {nodes.map((node) => (
+                  <li
+                    key={node.id}
+                    className="group flex items-center gap-2.5 rounded-xl px-3 py-2 hover:bg-gray-50"
+                  >
+                    <button
+                      onClick={() => (node.type === "folder" ? setPath(path.replace(/\/$/, "") + "/" + node.name) : openPreview(node))}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    >
+                      {node.type === "folder" ? (
+                        <Folder className="size-4 shrink-0 text-[#5661f6]" />
+                      ) : (
+                        <File className="size-4 shrink-0 text-gray-400" />
+                      )}
+                      <span className="truncate text-[13px] font-medium text-gray-700">{node.name}</span>
+                      {node.type === "file" && (
+                        <span className="shrink-0 text-[11px] text-gray-400">{formatSize(node.size_bytes)}</span>
+                      )}
+                      {node.type === "file" && node.indexing_status !== "done" && node.indexing_status !== "skipped" && (
+                        <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+                          {node.indexing_status}
+                        </span>
+                      )}
+                    </button>
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                      {node.type === "file" && (
+                        <button
+                          onClick={() => handleDownload(node)}
+                          className="rounded p-1 text-gray-400 hover:text-gray-700"
+                          title="Download"
+                        >
+                          <Download className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRename(node)}
+                        className="rounded p-1 text-gray-400 hover:text-gray-700"
+                        title="Rename"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(node)}
+                        className="rounded p-1 text-gray-400 hover:text-red-500"
+                        title="Delete"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              {creatingFolder && (
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <Folder className="size-4 shrink-0 text-[#5661f6]" />
+                  <input
+                    autoFocus
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCreateFolder()
+                      if (e.key === "Escape") setCreatingFolder(false)
+                    }}
+                    onBlur={() => !newFolderName && setCreatingFolder(false)}
+                    placeholder="Folder name"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-[13px] outline-none focus:border-[#5661f6]"
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {error && (
           <div className="border-t border-red-100 bg-red-50 px-5 py-2 text-[12px] text-red-600">{error}</div>
         )}
 
-        <div className="flex items-center gap-2 border-t border-gray-100 px-5 py-3">
-          <button
-            onClick={() => setCreatingFolder(true)}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium text-gray-600 hover:bg-gray-50"
-          >
-            <FolderPlus className="size-3.5" />
-            New folder
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-full bg-[#5661f6] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#4550e0]"
-          >
-            <Upload className="size-3.5" />
-            Upload
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => handleUpload(e.target.files)}
-          />
-        </div>
+        {!previewNode && (
+          <div className="flex items-center gap-2 border-t border-gray-100 px-5 py-3">
+            <button
+              onClick={() => setCreatingFolder(true)}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium text-gray-600 hover:bg-gray-50"
+            >
+              <FolderPlus className="size-3.5" />
+              New folder
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-full bg-[#5661f6] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#4550e0]"
+            >
+              <Upload className="size-3.5" />
+              Upload
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => handleUpload(e.target.files)}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react"
 import { useSession } from "next-auth/react"
 import { apiFetch } from "@/lib/api-client"
-import { FileNode } from "@/types/files"
+import { FileNode, FileNodeDetail } from "@/types/files"
 
 export function useFiles() {
   const { data: session } = useSession()
@@ -46,6 +46,23 @@ export function useFiles() {
     return res.json()
   }, [accessToken])
 
+  const getNode = useCallback(async (id: string): Promise<FileNodeDetail> => {
+    const res = await apiFetch(`/api/v1/files/nodes/${id}`, accessToken)
+    if (!res.ok) throw new Error(`Failed to load file: ${res.status}`)
+    return res.json()
+  }, [accessToken])
+
+  // Returns a blob (not text/JSON) — used for both preview (wrapped in an
+  // object URL for <img>/<iframe>) and download (<a download> via the same
+  // object URL). The auth header has to travel with a real fetch() call
+  // here, which is why this can't just be a plain <a href> straight to the
+  // backend — the browser wouldn't attach the bearer token to that request.
+  const fetchContent = useCallback(async (id: string): Promise<Blob> => {
+    const res = await apiFetch(`/api/v1/files/nodes/${id}/content`, accessToken)
+    if (!res.ok) throw new Error(`Failed to fetch file content: ${res.status}`)
+    return res.blob()
+  }, [accessToken])
+
   const renameNode = useCallback(async (id: string, name: string): Promise<FileNode> => {
     const res = await apiFetch(`/api/v1/files/nodes/${id}`, accessToken, {
       method: "PATCH",
@@ -60,5 +77,5 @@ export function useFiles() {
     await apiFetch(`/api/v1/files/nodes/${id}`, accessToken, { method: "DELETE" })
   }, [accessToken])
 
-  return { loading, listTree, createFolder, uploadFile, renameNode, deleteNode }
+  return { loading, listTree, createFolder, uploadFile, getNode, fetchContent, renameNode, deleteNode }
 }

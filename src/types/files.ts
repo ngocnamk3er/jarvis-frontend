@@ -13,3 +13,10 @@ export type FileNode = {
   created_at: string
   updated_at: string
 }
+
+// GET /api/v1/files/nodes/{id} — adds extracted_text, used for the text
+// preview path (images/PDFs preview from raw bytes instead, see
+// fetchContent in use-files.ts).
+export type FileNodeDetail = FileNode & {
+  extracted_text: string | null
+}
