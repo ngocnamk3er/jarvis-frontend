@@ -7,6 +7,7 @@ import { useChat, useLoadingThreadIds } from "@/hooks/use-chat"
 import { useConversations } from "@/hooks/use-conversations"
 import { useModels } from "@/hooks/use-models"
 import { Sidebar } from "./sidebar"
+import { FileBrowserModal } from "@/components/files/file-browser-modal"
 import { EmptyState } from "./empty-state"
 import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
@@ -24,6 +25,7 @@ export function ChatWindow() {
   const { conversations, create, remove, setLastModel, setLastSubagentModel } = useConversations()
   const { models } = useModels()
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [filesOpen, setFilesOpen] = useState(false)
   const pendingContent = useRef<{
     content: string
     effort: import("@/types/chat").ThinkingEffort
@@ -168,7 +170,10 @@ export function ChatWindow() {
         onNewChat={handleNewChat}
         onSelect={handleSelectConversation}
         onDelete={handleDeleteConversation}
+        onOpenFiles={() => setFilesOpen(true)}
       />
+
+      <FileBrowserModal open={filesOpen} onClose={() => setFilesOpen(false)} />
 
       <div className="flex flex-1 min-w-0 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">

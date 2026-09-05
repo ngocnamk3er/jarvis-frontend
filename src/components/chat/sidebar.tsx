@@ -1,6 +1,6 @@
 "use client"
 
-import { KeyRound, LogOut, MessageSquare, Plus, Search, Trash2, UserRound } from "lucide-react"
+import { FolderOpen, KeyRound, LogOut, MessageSquare, Plus, Search, Trash2, UserRound } from "lucide-react"
 import { useSession, signIn } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/logout"
@@ -29,6 +29,7 @@ type Props = {
   onNewChat: () => void
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onOpenFiles: () => void
 }
 
 function SpinnerIcon({ className }: { className?: string }) {
@@ -40,7 +41,7 @@ function SpinnerIcon({ className }: { className?: string }) {
   )
 }
 
-export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, onSelect, onDelete }: Props) {
+export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, onSelect, onDelete, onOpenFiles }: Props) {
   const { data: session } = useSession()
   const displayName = session?.user?.name ?? session?.user?.email ?? "Account"
   const initial = displayName.charAt(0).toUpperCase()
@@ -109,6 +110,13 @@ export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, 
       </div>
 
       <div className="px-3 pb-5 pt-3 border-t border-gray-100">
+        <button
+          onClick={onOpenFiles}
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+        >
+          <FolderOpen className="size-3.5 opacity-70" />
+          Files
+        </button>
         <button
           onClick={editProfile}
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:bg-gray-50 transition-colors"

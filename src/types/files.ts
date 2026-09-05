@@ -1,0 +1,15 @@
+export type FileNodeType = "folder" | "file"
+
+export type FileNode = {
+  id: string
+  parent_id: string | null
+  name: string
+  type: FileNodeType
+  mime_type: string | null
+  size_bytes: number | null
+  // pending|extracting|embedding|done|failed|skipped — see backend
+  // jarvis-file-service's FileNode.indexing_status.
+  indexing_status: string
+  created_at: string
+  updated_at: string
+}
