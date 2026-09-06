@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react"
 import { useFiles } from "@/hooks/use-files"
+import { formatSize, triggerDownload } from "@/lib/download"
 import { FileNode } from "@/types/files"
 
 type Props = {
@@ -32,31 +33,8 @@ type PreviewContent =
   | { kind: "text"; text: string }
   | { kind: "unsupported" }
 
-function formatSize(bytes: number | null): string {
-  if (bytes === null) return ""
-  if (bytes < 1024) return `${bytes}B`
-  const units = ["KB", "MB", "GB"]
-  let n = bytes / 1024
-  for (const unit of units) {
-    if (n < 1024) return `${n.toFixed(1)}${unit}`
-    n /= 1024
-  }
-  return `${n.toFixed(1)}TB`
-}
-
 function splitPath(path: string): string[] {
   return path.split("/").filter(Boolean)
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
 }
 
 export function FileBrowserModal({ open, onClose }: Props) {

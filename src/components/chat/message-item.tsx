@@ -13,6 +13,7 @@ import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { Message, MessagePart, ToolCall, TokenUsage } from "@/types/chat"
 import { ToolBadge, ToolGroupBadge } from "./tool-badge"
 import { TodoList } from "./todo-list"
+import { FileAttachment } from "./file-attachment"
 
 const SvgDiagram = dynamic(
   () => import("./svg-diagram").then((m) => m.SvgDiagram),
@@ -65,7 +66,7 @@ function splitNestedTools(parts: MessagePart[]): { topLevel: MessagePart[]; byTa
   const byTaskRunId = new Map<string, MessagePart[]>()
   for (const part of parts) {
     const taskRunId = part.type === "tool" ? part.tool.task_run_id
-      : part.type === "todos" || part.type === "viz" || part.type === "tool_limit" ? part.task_run_id
+      : part.type === "todos" || part.type === "viz" || part.type === "tool_limit" || part.type === "file" ? part.task_run_id
       : undefined
     if (taskRunId) {
       const arr = byTaskRunId.get(taskRunId) ?? []
@@ -128,6 +129,9 @@ function renderToolItems(parts: MessagePart[], byTaskRunId: Map<string, MessageP
     }
     if (item.kind === "other" && item.part.type === "tool_limit") {
       return <ToolLimitNotice key={ri} part={item.part} />
+    }
+    if (item.kind === "other" && item.part.type === "file") {
+      return <FileAttachment key={ri} part={item.part} />
     }
     return null
   })
@@ -352,6 +356,10 @@ export function MessageItem({
 
           if (part.type === "tool_limit") {
             return <ToolLimitNotice key={ri} part={part} />
+          }
+
+          if (part.type === "file") {
+            return <FileAttachment key={ri} part={part} />
           }
 
           if (part.type === "viz") {

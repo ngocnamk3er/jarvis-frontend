@@ -61,6 +61,10 @@ export type MessagePart =
   // task_run_id set when this belongs to a subagent's own tool loop (nested
   // under that subagent's badge) rather than the main agent's own turn.
   | { type: "viz"; format: "svg"; code: string; title?: string; task_run_id?: string }
+  // A file the agent generated in the sandbox and handed to the user via
+  // `present_file` — rendered as a download chip. `path` is relative to the
+  // conversation's sandbox workspace; downloaded via GET /api/v1/chat/sandbox-file.
+  | { type: "file"; name: string; mime: string; size: number; path: string; thread_id: string; task_run_id?: string }
   | { type: "todos"; todos: Todo[]; task_run_id?: string }
   // Emitted when SoftHardToolCallLimitMiddleware blocks a call — "soft" means
   // blocked but the run continues, "hard" means blocked and the run stopped.
@@ -107,6 +111,7 @@ export type StreamEvent =
   | { type: "tool_start"; name: string; label?: string; input?: unknown; run_id?: string; task_run_id?: string }
   | { type: "tool_end"; name: string; output: string; run_id?: string; task_run_id?: string }
   | { type: "viz"; format: "svg"; code: string; title?: string; task_run_id?: string }
+  | { type: "file"; name: string; mime: string; size: number; path: string; thread_id: string; task_run_id?: string }
   | { type: "todo_update"; todos: Todo[]; task_run_id?: string }
   | {
       type: "tool_limit"

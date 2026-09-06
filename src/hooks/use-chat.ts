@@ -178,6 +178,10 @@ async function runStream(body: ReadableStream<Uint8Array>, threadId: string, tar
           updateMsg((m) => ({ ...m, parts: [...m.parts, { type: "viz" as const, format: event.format, code: event.code, title: event.title, task_run_id: event.task_run_id }] }))
           break
 
+        case "file":
+          updateMsg((m) => ({ ...m, parts: [...m.parts, { type: "file" as const, name: event.name, mime: event.mime, size: event.size, path: event.path, thread_id: event.thread_id, task_run_id: event.task_run_id }] }))
+          break
+
         case "todo_update":
           updateMsg((m) => {
             const parts = [...m.parts]
