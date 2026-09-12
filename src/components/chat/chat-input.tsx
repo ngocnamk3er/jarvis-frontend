@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react"
-import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe } from "lucide-react"
+import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe, Terminal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThinkingEffort, Model } from "@/types/chat"
 import { useModels } from "@/hooks/use-models"
@@ -53,9 +53,15 @@ type Props = {
   // as a pill, and compared against the selected model's own contextWindow
   // to hard-block sending once the conversation is full for that model.
   contextTokens?: number
+  // Global preference (not per-message) — when on, ChatWindow auto-clicks
+  // Approve on every bash HITL interrupt instead of showing HitlApproval.
+  // Owned by ChatWindow (persisted to localStorage there) since that's also
+  // where the auto-approve effect lives; passed down just to render the button.
+  autoApproveBash?: boolean
+  onToggleAutoApproveBash?: () => void
 }
 
-export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId, initialSubagentModelId, hasMessages, contextTokens }: Props) {
+export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId, initialSubagentModelId, hasMessages, contextTokens, autoApproveBash, onToggleAutoApproveBash }: Props) {
   const { models } = useModels()
   const [value, setValue] = useState("")
   const [effort, setEffort] = useState<ThinkingEffort>("high")
@@ -252,6 +258,29 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
                   Web {webSearch ? "on" : "off"}
                 </span>
               </button>
+
+              {/* Auto-approve bash toggle — on, ChatWindow auto-clicks
+                  Approve on every bash HITL interrupt instead of showing the
+                  approval card. A standing preference, not per-message. */}
+              {onToggleAutoApproveBash && (
+                <button
+                  onClick={onToggleAutoApproveBash}
+                  title={
+                    autoApproveBash
+                      ? "Bash commands run without asking — click to require approval again"
+                      : "Bash commands need your approval before running — click to auto-approve"
+                  }
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-colors",
+                    autoApproveBash ? "bg-[#EEF0FF] hover:bg-[#E4E7FF]" : "bg-gray-100 hover:bg-gray-200"
+                  )}
+                >
+                  <Terminal className={cn("size-3 shrink-0", autoApproveBash ? "text-[#5661f6]" : "text-gray-400")} />
+                  <span className={cn("text-[11px] font-semibold", autoApproveBash ? "text-[#5661f6]" : "text-gray-400")}>
+                    Auto-run bash {autoApproveBash ? "on" : "off"}
+                  </span>
+                </button>
+              )}
 
               {/* Model selector */}
               <div ref={modelRef} className="relative">

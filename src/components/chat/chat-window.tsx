@@ -26,6 +26,10 @@ export function ChatWindow() {
   const { models } = useModels()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [filesOpen, setFilesOpen] = useState(false)
+  // Global preference, not per-conversation — persisted to localStorage
+  // below. Starts false on every load (incl. SSR) and is corrected from
+  // storage in a mount effect, since localStorage isn't available server-side.
+  const [autoApproveBash, setAutoApproveBash] = useState(false)
   const pendingContent = useRef<{
     content: string
     effort: import("@/types/chat").ThinkingEffort
@@ -69,6 +73,21 @@ export function ChatWindow() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Restore the auto-approve-bash preference — client-only, so this can't
+  // just be the useState initializer (would break SSR).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAutoApproveBash(localStorage.getItem("jarvis:autoApproveBash") === "true")
+  }, [])
+
+  const toggleAutoApproveBash = () => {
+    setAutoApproveBash((prev) => {
+      const next = !prev
+      localStorage.setItem("jarvis:autoApproveBash", String(next))
+      return next
+    })
+  }
 
   // Send pending message after activeId is set (new conversation flow)
   useEffect(() => {
@@ -161,6 +180,17 @@ export function ChatWindow() {
   // eslint-disable-next-line react-hooks/refs
   const resumeWebSearch = (activeId ? lastSentWebSearch.current.get(activeId) : undefined) ?? true
 
+  // Auto-approve preference: click Approve for the user the instant a bash
+  // interrupt lands, instead of rendering HitlApproval. Every interrupt today
+  // is a bash call (the only tool in HumanInTheLoopMiddleware's interrupt_on
+  // — see backend app/agents/graph.py), so there's nothing to distinguish here.
+  useEffect(() => {
+    if (pendingHitl && !isLoading && autoApproveBash) {
+      resumeMessage("approve", resumeModel, resumeSubagentModel, resumeWebSearch)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingHitl, isLoading, autoApproveBash])
+
   // Live value from this session's SSE stream overrides; else fall back to
   // whatever was last persisted (loaded once via useConversations() on
   // mount) — same pattern as resumeModelId above.
@@ -198,7 +228,7 @@ export function ChatWindow() {
             <EmptyState />
           )}
 
-          {pendingHitl && !isLoading && (
+          {pendingHitl && !isLoading && !autoApproveBash && (
             <HitlApproval
               hitl={pendingHitl}
               onApprove={() => resumeMessage("approve", resumeModel, resumeSubagentModel, resumeWebSearch)}
@@ -249,6 +279,8 @@ export function ChatWindow() {
             }
             hasMessages={hasMessages}
             contextTokens={displayedContextTokens}
+            autoApproveBash={autoApproveBash}
+            onToggleAutoApproveBash={toggleAutoApproveBash}
           />
         </div>
       </div>
