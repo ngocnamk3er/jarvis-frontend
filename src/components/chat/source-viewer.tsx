@@ -48,12 +48,32 @@ function HighlightBoxes({ citation, page }: { citation: Citation; page: number }
 
 function PdfPage({ blob, citation, page }: { blob: Blob; citation: Citation; page: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  // Whether the canvas has pixels in it yet — not the canvas's size. Sizing
+  // the wrapper from the PDF's native viewport (getViewport's width/height)
+  // used to desync it from what actually renders on screen: the canvas
+  // shrinks under `max-w-full` whenever the modal is narrower than the
+  // page, keeping its own aspect ratio as it does — but a wrapper pinned to
+  // the *unshrunk* viewport size does not follow it down, so the two ended
+  // up different heights (measured: 942px canvas inside a 1188px wrapper on
+  // a 760px-wide modal). Every highlight box, positioned in percent of the
+  // wrapper, inherited that gap as a proportional downward drift — worse
+  // the further down the page. Leaving the wrapper's size unset instead
+  // (just `inline-block`) makes it shrink-wrap to the canvas's real
+  // rendered size, the same way ImagePage's wrapper already does around its
+  // `<img>` — so it matches at any zoom or modal width, not just the one
+  // this was tested at.
+  const [rendered, setRendered] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     let renderTask: { cancel: () => void } | null = null
+    // A new page/citation must not keep showing the previous page's canvas
+    // pixels underneath a "loading" state that never arrives, and boxes
+    // must not draw over a canvas that no longer matches them.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRendered(false)
+    setError(null)
 
     async function render() {
       try {
@@ -71,12 +91,12 @@ function PdfPage({ blob, citation, page }: { blob: Blob; citation: Citation; pag
         if (!canvas) return
         canvas.width = viewport.width
         canvas.height = viewport.height
-        setSize({ w: viewport.width, h: viewport.height })
         const ctx = canvas.getContext("2d")
         if (!ctx) return
         const task = pdfPage.render({ canvas, canvasContext: ctx, viewport })
         renderTask = task
         await task.promise
+        if (!cancelled) setRendered(true)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to render page")
       }
@@ -94,9 +114,9 @@ function PdfPage({ blob, citation, page }: { blob: Blob; citation: Citation; pag
 
   return (
     <div className="flex items-center justify-center p-4">
-      <div className="relative inline-block" style={size ? { width: size.w, height: size.h } : undefined}>
+      <div className="relative inline-block">
         <canvas ref={canvasRef} className="block max-w-full shadow-sm" />
-        {size && <HighlightBoxes citation={citation} page={page} />}
+        {rendered && <HighlightBoxes citation={citation} page={page} />}
       </div>
     </div>
   )
