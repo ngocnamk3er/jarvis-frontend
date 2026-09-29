@@ -39,7 +39,19 @@ pipeline {
 
     stage('Build image') {
       steps {
-        sh """docker build \
+        // --network=host: same fix as jarvis-backend/jarvis-file-service's
+        // Jenkinsfiles — this host's Docker bridge network is markedly
+        // slower (and, on 2026-09-29, outright dropped mid-`npm ci`) than
+        // the host's own network stack. DOCKER_BUILDKIT=1 because the
+        // Dockerfile's npm layer now uses a cache mount, which the classic
+        // builder ignores in silence rather than erroring on. --provenance=
+        // false because BuildKit's default attestation turns the image
+        // into an OCI index with a second, non-image manifest — jarvis-
+        // backend and jarvis-file-service both hit `docker push` failing
+        // with MANIFEST_BLOB_UNKNOWN on their first BuildKit build before
+        // this flag was added; applying it here from the start rather than
+        // rediscovering the same failure on this repo's first BuildKit push.
+        sh """DOCKER_BUILDKIT=1 docker build --network=host --provenance=false \
               --build-arg NEXT_PUBLIC_API_URL=http://api.jarvis.local \
               --build-arg NEXT_PUBLIC_KEYCLOAK_ISSUER=http://auth.jarvis.local/realms/jarvis \
               -t ${IMAGE}:${IMAGE_TAG} ."""

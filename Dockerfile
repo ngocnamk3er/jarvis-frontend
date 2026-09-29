@@ -5,7 +5,14 @@ WORKDIR /app
 # apply here; Node's own --dns-result-order flag is the right knob.
 ENV NODE_OPTIONS=--dns-result-order=ipv4first
 COPY package.json package-lock.json ./
-RUN npm ci
+# A cache mount, for the same reason the Python services' pip layers use
+# one: this host's Docker bridge network is slow enough on its own (~2.7
+# MB/min measured against PyPI) to make a full `npm ci` re-download
+# painful, and on 2026-09-29 it dropped the connection outright mid-`npm
+# ci` ("npm error network") rather than just running slowly. The mount
+# lives outside the image, so it doesn't grow it, and --network=host in
+# the Jenkinsfile's `docker build` call is the other half of this fix.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
