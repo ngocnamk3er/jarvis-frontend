@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored build output, not source — a minified single-line file this
+    // size reads to ESLint as thousands of violations on one line. Copied
+    // from pdfjs-dist/build (see source-viewer.tsx + package.json's
+    // postinstall); nothing here is ever meant to pass a source-code lint.
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 
