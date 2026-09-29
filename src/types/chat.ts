@@ -29,6 +29,25 @@ export type Model = {
 
 export type ToolStatus = "streaming" | "running" | "done"
 
+// One search_files hit, shaped for a source chip and (for pdf/image files)
+// a highlight overlay. Mirrors jarvis-file-service's VectorSearchResult —
+// see app/agents/tools/files.py's _citation() for the backend side.
+// page_start/page_end are 0 when the source format has no pagination (a
+// .txt, a .docx) — not a failure, just nothing to point at on a page.
+export type Citation = {
+  file_id: string
+  path: string
+  page_start: number
+  page_end: number
+  // [[page, [x0, top, x1, bottom]], ...] — fractions of the page (0..1,
+  // top-left origin), one box per line of matched text.
+  boxes: [number, [number, number, number, number]][]
+  char_start: number
+  char_end: number
+  score: number
+  snippet: string
+}
+
 export type ToolCall = {
   name: string
   label?: string
@@ -43,6 +62,10 @@ export type ToolCall = {
   // subagent's own tool loop), so the UI can nest it under that badge
   // instead of showing it as an unrelated top-level row.
   task_run_id?: string
+  // search_files only — carried on the ToolMessage's artifact rather than
+  // its content, so it never costs the model tokens. See use-chat.ts's
+  // tool_end handling and chat_service.py's ToolEndEventHandler.
+  citations?: Citation[]
 }
 
 export type TodoStatus = "pending" | "in_progress" | "completed"
@@ -109,7 +132,7 @@ export type StreamEvent =
   | { type: "thinking_token"; content: string }
   | { type: "tool_chunk"; index: number; name: string; args_delta: string }
   | { type: "tool_start"; name: string; label?: string; input?: unknown; run_id?: string; task_run_id?: string }
-  | { type: "tool_end"; name: string; output: string; run_id?: string; task_run_id?: string }
+  | { type: "tool_end"; name: string; output: string; run_id?: string; task_run_id?: string; citations?: Citation[] }
   | { type: "viz"; format: "svg"; code: string; title?: string; task_run_id?: string }
   | { type: "file"; name: string; mime: string; size: number; path: string; thread_id: string; task_run_id?: string }
   | { type: "todo_update"; todos: Todo[]; task_run_id?: string }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import {
   ChevronDown, ChevronRight, Download, Loader2,
-  Terminal, Globe, Wrench, Layers, Bot,
+  Terminal, Globe, Wrench, Layers, Bot, Search,
 } from "lucide-react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ToolCall } from "@/types/chat"
 import type { LucideIcon } from "lucide-react"
+import { SourceChips } from "./source-chips"
 
 // ── Per-tool display metadata ──────────────────────────────────────────────
 type ToolMeta = { label: string; Icon: LucideIcon }
@@ -19,6 +20,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   bash:             { label: "Running command",    Icon: Terminal  },
   web_search:       { label: "Searching the web",  Icon: Globe     },
   web_fetch:        { label: "Fetching page",       Icon: Globe     },
+  search_files:     { label: "Searching files",     Icon: Search    },
   task:             { label: "Delegating to sub-agent", Icon: Bot   },
 }
 
@@ -314,6 +316,7 @@ export function ToolBadge({
           {tool.input !== undefined && <InputBlock input={tool.input} />}
           {children}
           {tool.output !== undefined && <OutputBlock output={tool.output} />}
+          {tool.citations && tool.citations.length > 0 && <SourceChips citations={tool.citations} />}
         </div>
       )}
     </div>
