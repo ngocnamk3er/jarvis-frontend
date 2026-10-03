@@ -14,10 +14,15 @@ type Props = {
 
 // Pages this citation actually has a box on, in order — a 300-word chunk
 // crosses a page break often enough that "just show page_start" would hide
-// half the highlight. Falls back to [page_start] when there are no boxes at
-// all (page_start still 0 for a pageless format, handled by the caller).
+// half the highlight. Union of both box arrays: a hybrid hit's exact_boxes
+// can land on a page boxes doesn't cover (or vice versa) since they mark two
+// independent reasons the chunk matched. Falls back to [page_start] when
+// there are no boxes at all (page_start still 0 for a pageless format,
+// handled by the caller).
 function citedPages(citation: Citation): number[] {
-  const pages = [...new Set(citation.boxes.map(([p]) => p))].sort((a, b) => a - b)
+  const pages = [...new Set([...citation.boxes, ...citation.exact_boxes].map(([p]) => p))].sort(
+    (a, b) => a - b,
+  )
   return pages.length > 0 ? pages : citation.page_start ? [citation.page_start] : []
 }
 
@@ -25,15 +30,35 @@ function citedPages(citation: Citation): number[] {
 // lines up with a PDF canvas (which has explicit render dimensions) and a
 // plain <img> (which doesn't, until it's loaded) the same way, with no
 // natural-size bookkeeping either has to do.
+//
+// Two colors, not one: `boxes` (yellow) is relevant-by-meaning — the whole
+// chunk a semantic/hybrid search matched; `exact_boxes` (green) is
+// relevant-by-literal-wording — where the query's own words were actually
+// found, nested inside the chunk when both are present. search_files(exact=
+// True) puts its one narrowed range under exact_boxes alone, so a pure
+// exact-match citation shows only green.
 function HighlightBoxes({ citation, page }: { citation: Citation; page: number }) {
-  const boxes = citation.boxes.filter(([p]) => p === page)
-  if (boxes.length === 0) return null
+  const semantic = citation.boxes.filter(([p]) => p === page)
+  const exact = citation.exact_boxes.filter(([p]) => p === page)
+  if (semantic.length === 0 && exact.length === 0) return null
   return (
     <div className="pointer-events-none absolute inset-0">
-      {boxes.map(([, [x0, top, x1, bottom]], i) => (
+      {semantic.map(([, [x0, top, x1, bottom]], i) => (
         <div
-          key={i}
+          key={`sem-${i}`}
           className="absolute rounded-[2px] bg-yellow-300/40 ring-2 ring-yellow-400"
+          style={{
+            left: `${x0 * 100}%`,
+            top: `${top * 100}%`,
+            width: `${(x1 - x0) * 100}%`,
+            height: `${(bottom - top) * 100}%`,
+          }}
+        />
+      ))}
+      {exact.map(([, [x0, top, x1, bottom]], i) => (
+        <div
+          key={`exact-${i}`}
+          className="absolute rounded-[2px] bg-green-300/50 ring-2 ring-green-500"
           style={{
             left: `${x0 * 100}%`,
             top: `${top * 100}%`,
@@ -138,6 +163,12 @@ function ImagePage({ blob, citation }: { blob: Blob; citation: Citation }) {
   )
 }
 
+// Two ranges, nested: [char_start, char_end) is relevant-by-meaning
+// (yellow), [exact_char_start, exact_char_end) is relevant-by-literal-
+// wording (green), always inside the first when both are present — see
+// jarvis-file-service's _locate_exact_match. search_files(exact=True)
+// puts its one narrowed range under exact_char_* alone (char_start/
+// char_end stay 0,0) — rendered as just the green mark, no yellow.
 function TextExcerpt({ node, citation }: { node: FileNodeDetail; citation: Citation }) {
   const text = node.extracted_text ?? ""
   const markRef = useRef<HTMLElement>(null)
@@ -149,15 +180,45 @@ function TextExcerpt({ node, citation }: { node: FileNodeDetail; citation: Citat
   if (!text) {
     return <p className="px-5 py-16 text-center text-[13px] text-gray-400">No text available for this file.</p>
   }
-  const start = Math.max(0, Math.min(citation.char_start, text.length))
-  const end = Math.max(start, Math.min(citation.char_end, text.length))
+
+  const outerStart = Math.max(0, Math.min(citation.char_start, text.length))
+  const outerEnd = Math.max(outerStart, Math.min(citation.char_end, text.length))
+  const hasOuter = outerEnd > outerStart
+
+  const exactStart = Math.max(0, Math.min(citation.exact_char_start, text.length))
+  const exactEnd = Math.max(exactStart, Math.min(citation.exact_char_end, text.length))
+  const hasExact = exactEnd > exactStart
+
+  if (!hasOuter) {
+    return (
+      <pre className="whitespace-pre-wrap break-words px-5 py-4 text-[12px] leading-relaxed text-gray-700">
+        {text.slice(0, hasExact ? exactStart : 0)}
+        {hasExact && (
+          <mark ref={markRef} className="rounded-[2px] bg-green-300/70">
+            {text.slice(exactStart, exactEnd)}
+          </mark>
+        )}
+        {text.slice(hasExact ? exactEnd : 0)}
+      </pre>
+    )
+  }
   return (
     <pre className="whitespace-pre-wrap break-words px-5 py-4 text-[12px] leading-relaxed text-gray-700">
-      {text.slice(0, start)}
-      <mark ref={markRef} className="rounded-[2px] bg-yellow-300/60">
-        {text.slice(start, end)}
+      {text.slice(0, outerStart)}
+      <mark ref={hasExact ? undefined : markRef} className="rounded-[2px] bg-yellow-300/60">
+        {hasExact ? (
+          <>
+            {text.slice(outerStart, exactStart)}
+            <mark ref={markRef} className="rounded-[2px] bg-green-300/70">
+              {text.slice(exactStart, exactEnd)}
+            </mark>
+            {text.slice(exactEnd, outerEnd)}
+          </>
+        ) : (
+          text.slice(outerStart, outerEnd)
+        )}
       </mark>
-      {text.slice(end)}
+      {text.slice(outerEnd)}
     </pre>
   )
 }

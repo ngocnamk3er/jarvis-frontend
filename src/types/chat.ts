@@ -40,10 +40,20 @@ export type Citation = {
   page_start: number
   page_end: number
   // [[page, [x0, top, x1, bottom]], ...] — fractions of the page (0..1,
-  // top-left origin), one box per line of matched text.
+  // top-left origin), one box per line of matched text. Relevant by
+  // meaning (semantic search's whole-chunk extent) — drawn one color.
   boxes: [number, [number, number, number, number]][]
   char_start: number
   char_end: number
+  // Relevant by literal wording — search_files(exact=True) narrows its
+  // own boxes/char_start/char_end down to this instead (see
+  // jarvis-backend's _citation()), so exact=False is the only case where
+  // both this and boxes/char_start/char_end are populated together; this
+  // range is always nested inside the other when both are non-empty.
+  // Drawn a second color, alongside (not instead of) the first.
+  exact_boxes: [number, [number, number, number, number]][]
+  exact_char_start: number
+  exact_char_end: number
   score: number
   snippet: string
 }
