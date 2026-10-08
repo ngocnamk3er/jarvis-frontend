@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ThumbsUp, ThumbsDown } from "lucide-react"
 
 type Props = {
@@ -25,6 +25,17 @@ export function MessageFeedback({ traceId, submitFeedback, getFeedback }: Props)
   const [dialogRating, setDialogRating] = useState<"up" | "down" | null>(null)
   const [draft, setDraft] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  // Guards against a real race, not just a theoretical one: getFeedback
+  // carries Langfuse's own ~7-10s ingestion lag on top of ordinary
+  // network latency, so the mount-time fetch below can still be in
+  // flight well after the user has already voted. If it resolves *after*
+  // vote() below and is applied unconditionally, it silently overwrites
+  // the just-made optimistic state with stale (often null) data — the
+  // vote/comment appears to vanish, intermittently, depending on exact
+  // timing. Reported live as "editing old feedback feels flaky", which
+  // is exactly this. Once a vote has happened locally, that fetch's
+  // result is stale by definition and must not be applied.
+  const votedLocally = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -34,7 +45,7 @@ export function MessageFeedback({ traceId, submitFeedback, getFeedback }: Props)
     // buttons start unfilled, never a broken control.
     getFeedback(traceId)
       .then(({ rating, comment }) => {
-        if (cancelled) return
+        if (cancelled || votedLocally.current) return
         setRating(rating)
         setExistingComment(comment)
       })
@@ -55,9 +66,11 @@ export function MessageFeedback({ traceId, submitFeedback, getFeedback }: Props)
     setSubmitting(true)
     try {
       await submitFeedback(traceId, next, comment)
-      // Optimistic, not a re-fetch — see getFeedback's own ingestion-lag
-      // note above; a re-fetch right after submitting would show the
-      // vote as still missing.
+      // Marks any in-flight (or future) mount fetch's result as stale —
+      // see votedLocally's own comment above. Optimistic, not a re-fetch:
+      // see getFeedback's own ingestion-lag note; a re-fetch right after
+      // submitting would show the vote as still missing.
+      votedLocally.current = true
       setRating(next)
       setExistingComment(comment ?? null)
       setDialogRating(null)
