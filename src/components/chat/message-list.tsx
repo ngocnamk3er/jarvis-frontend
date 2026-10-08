@@ -8,8 +8,12 @@ const NEAR_BOTTOM_THRESHOLD = 120
 
 export function MessageList({
   messages,
+  submitFeedback,
+  getFeedback,
 }: {
   messages: Message[]
+  submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
+  getFeedback: (traceId: string) => Promise<"up" | "down" | null>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -57,6 +61,8 @@ export function MessageList({
           <MessageItem
             key={msg.id}
             message={msg}
+            submitFeedback={submitFeedback}
+            getFeedback={getFeedback}
           />
         ))}
         <div ref={bottomRef} />

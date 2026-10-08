@@ -214,6 +214,14 @@ async function runStream(body: ReadableStream<Uint8Array>, threadId: string, tar
           }))
           break
 
+        case "trace_id":
+          // Sent once, right as the turn starts — before this message has
+          // any content yet. Lets the feedback control (message-item.tsx)
+          // submit a vote the instant it's clicked, with no wait for the
+          // run to finish.
+          updateMsg((m) => ({ ...m, trace_id: event.trace_id }))
+          break
+
         case "usage":
           updateMsg((m) => ({
             ...m,
@@ -286,13 +294,17 @@ export function useChat(threadId: string | null) {
 
   const loadHistory = useCallback(async (id: string): Promise<boolean> => {
     const res = await apiFetch(`/api/v1/conversations/${id}/messages`, accessToken)
-    const data: { messages: { role: string; parts: MessagePart[]; usage?: Message["usage"] }[]; is_pending: boolean } = await res.json()
+    const data: {
+      messages: { role: string; parts: MessagePart[]; usage?: Message["usage"]; trace_id?: string }[]
+      is_pending: boolean
+    } = await res.json()
     const loaded: Message[] = data.messages.map((m) => ({
       id: makeId(),
       role: m.role as "user" | "assistant" | "system",
       parts: m.parts,
       isStreaming: false,
       usage: m.usage,
+      trace_id: m.trace_id,
     }))
     _msgs.set(id, loaded)
     _interrupted.set(id, data.is_pending ?? false)
@@ -472,7 +484,41 @@ export function useChat(threadId: string | null) {
     }).catch(() => {})
   }, [threadId, accessToken])
 
-  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory }
+  // Caller updates its own UI optimistically on success rather than
+  // re-fetching to confirm — Langfuse's self-hosted events_only ingestion
+  // took several seconds in testing before a just-written score was visible
+  // to getFeedback below, so an immediate re-fetch would show stale "no
+  // vote yet" state right after a successful submit.
+  const submitFeedback = useCallback(
+    async (traceId: string, rating: "up" | "down", comment?: string) => {
+      if (!threadId) return
+      const res = await apiFetch("/api/v1/chat/feedback", accessToken, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: threadId, trace_id: traceId, rating, comment: comment || null }),
+      })
+      if (!res.ok) throw new Error(`feedback submit failed: ${res.status}`)
+    },
+    [threadId, accessToken]
+  )
+
+  // For restoring "you already rated this" — on mount/reload, once enough
+  // time has passed for ingestion to settle, not right after submitFeedback.
+  const getFeedback = useCallback(
+    async (traceId: string): Promise<"up" | "down" | null> => {
+      if (!threadId) return null
+      const res = await apiFetch(
+        `/api/v1/chat/feedback?thread_id=${encodeURIComponent(threadId)}&trace_id=${encodeURIComponent(traceId)}`,
+        accessToken
+      )
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.rating ?? null
+    },
+    [threadId, accessToken]
+  )
+
+  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback, getFeedback }
 }
 
 // ── Sidebar loading hook ───────────────────────────────────────────────────────

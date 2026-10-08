@@ -14,6 +14,7 @@ import { Message, MessagePart, ToolCall, TokenUsage } from "@/types/chat"
 import { ToolBadge, ToolGroupBadge } from "./tool-badge"
 import { TodoList } from "./todo-list"
 import { FileAttachment } from "./file-attachment"
+import { MessageFeedback } from "./message-feedback"
 
 const SvgDiagram = dynamic(
   () => import("./svg-diagram").then((m) => m.SvgDiagram),
@@ -246,8 +247,12 @@ function UsageFooter({ usage, isStreaming }: { usage: TokenUsage[]; isStreaming:
 
 export function MessageItem({
   message,
+  submitFeedback,
+  getFeedback,
 }: {
   message: Message
+  submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
+  getFeedback: (traceId: string) => Promise<"up" | "down" | null>
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -473,6 +478,28 @@ export function MessageItem({
 
       {message.usage && message.usage.length > 0 && (
         <UsageFooter usage={message.usage} isStreaming={message.isStreaming} />
+      )}
+
+      {!message.isStreaming && (
+        <div className="flex items-center gap-1 mt-1">
+          <button
+            onClick={copy}
+            className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+            title="Copy"
+          >
+            {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+          </button>
+          {/* Absent entirely (not just unfilled) when Langfuse tracing
+              isn't configured for this deployment — see Message.trace_id's
+              own comment in types/chat.ts. */}
+          {message.trace_id && (
+            <MessageFeedback
+              traceId={message.trace_id}
+              submitFeedback={submitFeedback}
+              getFeedback={getFeedback}
+            />
+          )}
+        </div>
       )}
     </div>
   )
