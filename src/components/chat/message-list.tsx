@@ -13,7 +13,7 @@ export function MessageList({
 }: {
   messages: Message[]
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
-  getFeedback: (traceId: string) => Promise<"up" | "down" | null>
+  getFeedback: (traceId: string) => Promise<{ rating: "up" | "down" | null; comment: string | null }>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)

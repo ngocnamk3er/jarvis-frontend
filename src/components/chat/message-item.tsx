@@ -252,7 +252,7 @@ export function MessageItem({
 }: {
   message: Message
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
-  getFeedback: (traceId: string) => Promise<"up" | "down" | null>
+  getFeedback: (traceId: string) => Promise<{ rating: "up" | "down" | null; comment: string | null }>
 }) {
   const [copied, setCopied] = useState(false)
 

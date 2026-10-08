@@ -502,18 +502,19 @@ export function useChat(threadId: string | null) {
     [threadId, accessToken]
   )
 
-  // For restoring "you already rated this" — on mount/reload, once enough
-  // time has passed for ingestion to settle, not right after submitFeedback.
+  // For restoring "you already rated this" (and what was said) — on
+  // mount/reload, once enough time has passed for ingestion to settle,
+  // not right after submitFeedback.
   const getFeedback = useCallback(
-    async (traceId: string): Promise<"up" | "down" | null> => {
-      if (!threadId) return null
+    async (traceId: string): Promise<{ rating: "up" | "down" | null; comment: string | null }> => {
+      if (!threadId) return { rating: null, comment: null }
       const res = await apiFetch(
         `/api/v1/chat/feedback?thread_id=${encodeURIComponent(threadId)}&trace_id=${encodeURIComponent(traceId)}`,
         accessToken
       )
-      if (!res.ok) return null
+      if (!res.ok) return { rating: null, comment: null }
       const data = await res.json()
-      return data.rating ?? null
+      return { rating: data.rating ?? null, comment: data.comment ?? null }
     },
     [threadId, accessToken]
   )
