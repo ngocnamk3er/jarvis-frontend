@@ -126,13 +126,16 @@ export type Message = {
   // multiple times for tool round-trips) — NOT summed, since each call's
   // input_tokens already includes all prior calls' context in this turn.
   usage?: TokenUsage[]
-  // The Langfuse trace recorded while generating this message — lets
-  // MessageFeedback (thumbs up/down) submit a vote against it. Arrives
-  // live via the "trace_id" SSE event while streaming, or from
-  // GET .../messages' own trace_id field after a reload (see
-  // jarvis-backend's serialize_messages). Absent entirely when Langfuse
-  // tracing isn't configured for this deployment.
+  // The trace recorded while generating this message — lets MessageFeedback
+  // (thumbs up/down) submit a vote against it. Arrives live via the
+  // "trace_id" SSE event while streaming, or from GET .../messages' own
+  // trace_id field after a reload (see jarvis-backend's serialize_messages).
   trace_id?: string
+  // Any existing vote for trace_id, included directly in the .../messages
+  // response (see jarvis-backend's serialize_messages) so the frontend
+  // doesn't need a separate getFeedback call per message after reload.
+  rating?: "up" | "down" | null
+  comment?: string | null
 }
 
 export type PendingClarify = {

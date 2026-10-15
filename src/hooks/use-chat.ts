@@ -295,7 +295,14 @@ export function useChat(threadId: string | null) {
   const loadHistory = useCallback(async (id: string): Promise<boolean> => {
     const res = await apiFetch(`/api/v1/conversations/${id}/messages`, accessToken)
     const data: {
-      messages: { role: string; parts: MessagePart[]; usage?: Message["usage"]; trace_id?: string }[]
+      messages: {
+        role: string
+        parts: MessagePart[]
+        usage?: Message["usage"]
+        trace_id?: string
+        rating?: "up" | "down" | null
+        comment?: string | null
+      }[]
       is_pending: boolean
     } = await res.json()
     const loaded: Message[] = data.messages.map((m) => ({
@@ -305,6 +312,8 @@ export function useChat(threadId: string | null) {
       isStreaming: false,
       usage: m.usage,
       trace_id: m.trace_id,
+      rating: m.rating,
+      comment: m.comment,
     }))
     _msgs.set(id, loaded)
     _interrupted.set(id, data.is_pending ?? false)
@@ -485,10 +494,9 @@ export function useChat(threadId: string | null) {
   }, [threadId, accessToken])
 
   // Caller updates its own UI optimistically on success rather than
-  // re-fetching to confirm — Langfuse's self-hosted events_only ingestion
-  // took several seconds in testing before a just-written score was visible
-  // to getFeedback below, so an immediate re-fetch would show stale "no
-  // vote yet" state right after a successful submit.
+  // re-fetching to confirm — the vote/comment already arrive with the next
+  // .../messages load (see loadHistory above), so there's nothing to
+  // re-fetch here.
   const submitFeedback = useCallback(
     async (traceId: string, rating: "up" | "down", comment?: string) => {
       if (!threadId) return
@@ -502,24 +510,7 @@ export function useChat(threadId: string | null) {
     [threadId, accessToken]
   )
 
-  // For restoring "you already rated this" (and what was said) — on
-  // mount/reload, once enough time has passed for ingestion to settle,
-  // not right after submitFeedback.
-  const getFeedback = useCallback(
-    async (traceId: string): Promise<{ rating: "up" | "down" | null; comment: string | null }> => {
-      if (!threadId) return { rating: null, comment: null }
-      const res = await apiFetch(
-        `/api/v1/chat/feedback?thread_id=${encodeURIComponent(threadId)}&trace_id=${encodeURIComponent(traceId)}`,
-        accessToken
-      )
-      if (!res.ok) return { rating: null, comment: null }
-      const data = await res.json()
-      return { rating: data.rating ?? null, comment: data.comment ?? null }
-    },
-    [threadId, accessToken]
-  )
-
-  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback, getFeedback }
+  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback }
 }
 
 // ── Sidebar loading hook ───────────────────────────────────────────────────────

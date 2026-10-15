@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { ThumbsUp, ThumbsDown } from "lucide-react"
 
 type Props = {
   traceId: string
+  initialRating?: "up" | "down" | null
+  initialComment?: string | null
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
-  getFeedback: (traceId: string) => Promise<{ rating: "up" | "down" | null; comment: string | null }>
 }
 
 const DIALOG_COPY: Record<"up" | "down", { title: string; subtitle: string }> = {
@@ -14,44 +15,20 @@ const DIALOG_COPY: Record<"up" | "down", { title: string; subtitle: string }> = 
   down: { title: "Additional feedback", subtitle: "Tell us what went wrong (optional)" },
 }
 
-// Thumbs up/down on one assistant message, backed by a Langfuse Score on
-// the trace that produced it (see jarvis-backend's observability.py) —
-// no feedback table of our own. Either thumb opens the same optional-
-// comment box (just worded differently), not just down — re-clicking the
-// already-selected thumb reopens it pre-filled, to edit that comment.
-export function MessageFeedback({ traceId, submitFeedback, getFeedback }: Props) {
-  const [rating, setRating] = useState<"up" | "down" | null>(null)
-  const [existingComment, setExistingComment] = useState<string | null>(null)
+// Thumbs up/down on one assistant message, backed by jarvis-backend's
+// message_feedback table (Postgres) keyed on the trace that produced it.
+// Either thumb opens the same optional-comment box (just worded
+// differently), not just down — re-clicking the already-selected thumb
+// reopens it pre-filled, to edit that comment. Any existing vote arrives
+// as initialRating/initialComment from the .../messages response itself
+// (see jarvis-backend's serialize_messages), so there's no mount-time
+// fetch here and no race with an optimistic vote to guard against.
+export function MessageFeedback({ traceId, initialRating, initialComment, submitFeedback }: Props) {
+  const [rating, setRating] = useState<"up" | "down" | null>(initialRating ?? null)
+  const [existingComment, setExistingComment] = useState<string | null>(initialComment ?? null)
   const [dialogRating, setDialogRating] = useState<"up" | "down" | null>(null)
   const [draft, setDraft] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  // Guards against a real race, not just a theoretical one: getFeedback
-  // carries Langfuse's own ~7-10s ingestion lag on top of ordinary
-  // network latency, so the mount-time fetch below can still be in
-  // flight well after the user has already voted. If it resolves *after*
-  // vote() below and is applied unconditionally, it silently overwrites
-  // the just-made optimistic state with stale (often null) data — the
-  // vote/comment appears to vanish, intermittently, depending on exact
-  // timing. Reported live as "editing old feedback feels flaky", which
-  // is exactly this. Once a vote has happened locally, that fetch's
-  // result is stale by definition and must not be applied.
-  const votedLocally = useRef(false)
-
-  useEffect(() => {
-    let cancelled = false
-    // Best-effort: a message voted on moments ago via a previous session
-    // might not show its state yet (ingestion lag, see submitFeedback's
-    // own comment in use-chat.ts) — failing quietly just means the
-    // buttons start unfilled, never a broken control.
-    getFeedback(traceId)
-      .then(({ rating, comment }) => {
-        if (cancelled || votedLocally.current) return
-        setRating(rating)
-        setExistingComment(comment)
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [traceId, getFeedback])
 
   function openDialog(next: "up" | "down") {
     if (submitting) return
@@ -66,11 +43,9 @@ export function MessageFeedback({ traceId, submitFeedback, getFeedback }: Props)
     setSubmitting(true)
     try {
       await submitFeedback(traceId, next, comment)
-      // Marks any in-flight (or future) mount fetch's result as stale —
-      // see votedLocally's own comment above. Optimistic, not a re-fetch:
-      // see getFeedback's own ingestion-lag note; a re-fetch right after
-      // submitting would show the vote as still missing.
-      votedLocally.current = true
+      // Optimistic, not a re-fetch — this message's own feedback row was
+      // just written, but re-fetching it here isn't worth a round trip
+      // when the caller already knows what it submitted.
       setRating(next)
       setExistingComment(comment ?? null)
       setDialogRating(null)

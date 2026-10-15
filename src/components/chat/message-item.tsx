@@ -248,11 +248,9 @@ function UsageFooter({ usage, isStreaming }: { usage: TokenUsage[]; isStreaming:
 export function MessageItem({
   message,
   submitFeedback,
-  getFeedback,
 }: {
   message: Message
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
-  getFeedback: (traceId: string) => Promise<{ rating: "up" | "down" | null; comment: string | null }>
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -489,14 +487,12 @@ export function MessageItem({
           >
             {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
           </button>
-          {/* Absent entirely (not just unfilled) when Langfuse tracing
-              isn't configured for this deployment — see Message.trace_id's
-              own comment in types/chat.ts. */}
           {message.trace_id && (
             <MessageFeedback
               traceId={message.trace_id}
+              initialRating={message.rating}
+              initialComment={message.comment}
               submitFeedback={submitFeedback}
-              getFeedback={getFeedback}
             />
           )}
         </div>

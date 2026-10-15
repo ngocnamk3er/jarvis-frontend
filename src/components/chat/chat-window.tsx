@@ -51,7 +51,7 @@ export function ChatWindow() {
   // which is triggered from here, not from the input).
   const lastSentWebSearch = useRef<Map<string, boolean>>(new Map())
 
-  const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback, getFeedback } = useChat(activeId)
+  const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback } = useChat(activeId)
   const loadingThreadIds = useLoadingThreadIds()
 
   async function openConversation(id: string) {
@@ -223,7 +223,7 @@ export function ChatWindow() {
       <div className="flex flex-1 min-w-0 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">
           {hasMessages ? (
-            <MessageList messages={messages} submitFeedback={submitFeedback} getFeedback={getFeedback} />
+            <MessageList messages={messages} submitFeedback={submitFeedback} />
           ) : (
             <EmptyState />
           )}
