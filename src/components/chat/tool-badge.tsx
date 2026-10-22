@@ -22,6 +22,10 @@ const TOOL_META: Record<string, ToolMeta> = {
   web_fetch:        { label: "Fetching page",       Icon: Globe     },
   search_files:     { label: "Searching files",     Icon: Search    },
   task:             { label: "Delegating to sub-agent", Icon: Bot   },
+  start_research:   { label: "Starting background research", Icon: Bot },
+  check_research:   { label: "Checking background research", Icon: Bot },
+  cancel_research:  { label: "Cancelling background research", Icon: Bot },
+  list_research:    { label: "Listing background research", Icon: Bot },
 }
 
 function getMeta(name: string): ToolMeta {
