@@ -185,3 +185,72 @@ export type Conversation = {
   created_at: string
   updated_at: string
 }
+
+// A background research task, as GET /api/v1/conversations/{id}/research
+// returns it (see jarvis-backend's app/agents/async_research.py,
+// describe_tasks). Live: status and steps move while the task runs.
+export type ResearchStatus = "running" | "success" | "error" | "cancelled" | "interrupted"
+
+export type ResearchStep = {
+  tool: string
+  // What the step is about — the search query, or the page it reads.
+  what: string
+  // False while the call is still in flight.
+  done: boolean
+}
+
+export type ResearchTask = {
+  task_id: string
+  status: ResearchStatus
+  description: string
+  started_at: string
+  steps_total: number
+  steps_done: number
+  // The most recent steps only, oldest first.
+  recent_steps: ResearchStep[]
+  plan: { task: string; status: string }[]
+  // Present once status is "success" / "error".
+  report?: string
+  error?: string
+  // A "success" task that ran out of its search budget before writing a
+  // report: the stop notice, in place of `report`.
+  stopped_early?: string
+}
+
+// GET /api/v1/conversations/{id}/context — what the context window is made of.
+// system_prompt / tools are null until the conversation has had a model call
+// since the breakdown was introduced; `messages` is total minus those two.
+export type ContextTool = { name: string; tokens: number; kind: "builtin" | "mcp" }
+
+export type ContextBreakdown = {
+  total: number
+  system_prompt: number | null
+  skills: number | null
+  tools: number | null
+  mcp_tools: number | null
+  messages: number | null
+  tool_detail: ContextTool[]
+  // Tools held back until the model asks for them (tool_search): what their
+  // schemas would cost — not part of `total`.
+  deferred: { tokens: number; detail: ContextTool[] }
+}
+
+// /api/v1/mcp/servers — MCP servers the user added. A header's value is never
+// returned, only its name.
+export type McpServer = {
+  id: string
+  name: string
+  url: string
+  transport: "streamable_http" | "sse"
+  header_names: string[]
+  enabled: boolean | null   // for the conversation asked about; null when none
+  tools: string[]
+  error: string | null
+}
+
+export type McpServers = {
+  servers: McpServer[]
+  headers_supported: boolean
+  max_servers: number
+  enabled: boolean
+}

@@ -6,6 +6,8 @@ import { RotateCcw } from "lucide-react"
 import { useChat, useLoadingThreadIds } from "@/hooks/use-chat"
 import { useConversations } from "@/hooks/use-conversations"
 import { useModels } from "@/hooks/use-models"
+import { useContextBreakdown } from "@/hooks/use-context-breakdown"
+import { useResearchTasks } from "@/hooks/use-research-tasks"
 import { Sidebar } from "./sidebar"
 import { FileBrowserModal } from "@/components/files/file-browser-modal"
 import { EmptyState } from "./empty-state"
@@ -13,6 +15,7 @@ import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
 import { ClarifyRequest } from "./clarify-request"
 import { HitlApproval } from "./hitl-approval"
+import { SidePanel } from "./side-panel"
 
 // Module-level set to track which threads have already had history loaded
 // (avoids re-fetching when switching back to a conversation mid-stream)
@@ -53,6 +56,13 @@ export function ChatWindow() {
 
   const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback } = useChat(activeId)
   const loadingThreadIds = useLoadingThreadIds()
+  // Background research started from this conversation. Polled, because a task
+  // keeps going after the turn that started it has ended.
+  const { tasks: researchTasks } = useResearchTasks(activeId, isLoading)
+  // Open by default and whenever a new task appears; remembered as "collapsed
+  // while there were N tasks" so a task started later opens it again.
+  const [researchCollapsedAt, setResearchCollapsedAt] = useState<number | null>(null)
+  const sideOpen = researchCollapsedAt === null || researchTasks.length > researchCollapsedAt
 
   async function openConversation(id: string) {
     // Skip if already loaded (may be mid-stream when switching back)
@@ -197,6 +207,11 @@ export function ChatWindow() {
   const displayedContextTokens =
     contextTokens ?? conversations.find((c) => c.id === activeId)?.context_tokens ?? 0
 
+  // The model the conversation last ran on (what its window is measured
+  // against); the model picked in the input but not yet sent is not known here.
+  const panelModel = resumeModel ?? models.find((m) => m.default) ?? models[0]
+  const contextBreakdown = useContextBreakdown(activeId, displayedContextTokens)
+
   const handleRetry = () => {
     const lastUser = [...messages].reverse().find((m) => m.role === "user")
     if (!lastUser) return
@@ -283,6 +298,19 @@ export function ChatWindow() {
             onToggleAutoApproveBash={toggleAutoApproveBash}
           />
         </div>
+
+        <SidePanel
+          threadId={activeId}
+          tasks={researchTasks}
+          open={sideOpen}
+          onToggle={() => setResearchCollapsedAt(sideOpen ? researchTasks.length : null)}
+          context={hasMessages && panelModel ? {
+            total: displayedContextTokens,
+            window: panelModel.contextWindow,
+            modelName: panelModel.name,
+            breakdown: contextBreakdown,
+          } : null}
+        />
       </div>
     </div>
   )
