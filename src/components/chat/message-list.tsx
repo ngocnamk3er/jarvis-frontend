@@ -9,8 +9,10 @@ const NEAR_BOTTOM_THRESHOLD = 120
 export function MessageList({
   messages,
   submitFeedback,
+  threadId,
 }: {
   messages: Message[]
+  threadId?: string | null
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -60,6 +62,7 @@ export function MessageList({
             key={msg.id}
             message={msg}
             submitFeedback={submitFeedback}
+            threadId={threadId}
           />
         ))}
         <div ref={bottomRef} />

@@ -15,6 +15,9 @@ export type Model = {
   contextWindow: number
   size: string
   default?: boolean
+  // Whether the model can look at images (backend AVAILABLE_MODELS.vision).
+  // Only the models that can are flagged; the others omit it.
+  vision?: boolean
   // Which thinking_effort levels are actually meaningful/safe for this
   // model — verified live per-model (see AVAILABLE_MODELS in
   // backend/app/schemas/chat.py for the evidence). Not every model exposes
@@ -76,7 +79,12 @@ export type ToolCall = {
   // its content, so it never costs the model tokens. See use-chat.ts's
   // tool_end handling and chat_service.py's ToolEndEventHandler.
   citations?: Citation[]
+  // view_image only — the stored pictures it opened (backend attachment store),
+  // shown under the step. Same artifact route as `citations`.
+  images?: ToolImage[]
 }
+
+export type ToolImage = { id: string; label?: string }
 
 export type TodoStatus = "pending" | "in_progress" | "completed"
 
@@ -153,7 +161,7 @@ export type StreamEvent =
   | { type: "thinking_token"; content: string }
   | { type: "tool_chunk"; index: number; name: string; args_delta: string }
   | { type: "tool_start"; name: string; label?: string; input?: unknown; run_id?: string; task_run_id?: string }
-  | { type: "tool_end"; name: string; output: string; run_id?: string; task_run_id?: string; citations?: Citation[] }
+  | { type: "tool_end"; name: string; output: string; run_id?: string; task_run_id?: string; citations?: Citation[]; images?: ToolImage[] }
   | { type: "viz"; format: "svg"; code: string; title?: string; task_run_id?: string }
   | { type: "file"; name: string; mime: string; size: number; path: string; thread_id: string; task_run_id?: string }
   | { type: "todo_update"; todos: Todo[]; task_run_id?: string }

@@ -1,10 +1,12 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react"
-import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe, Terminal } from "lucide-react"
+import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe, Terminal, Paperclip, X, File as FileIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThinkingEffort, Model } from "@/types/chat"
 import { useModels } from "@/hooks/use-models"
+import { attachmentProblem, MAX_ATTACHMENTS } from "@/lib/attachments"
+import { formatSize } from "@/lib/download"
 
 const EFFORT_OPTIONS: { value: ThinkingEffort; label: string; desc: string }[] = [
   { value: "none", label: "None", desc: "No thinking — fastest, direct answer" },
@@ -31,7 +33,9 @@ function OpenWeightBadge({ huggingFaceId }: { huggingFaceId: string | null }) {
 }
 
 type Props = {
-  onSend: (content: string, effort: ThinkingEffort, model: Model, subagentModel: Model | undefined, webSearch: boolean) => void
+  // Files are uploaded by the caller once the conversation exists (a new chat has
+  // no sandbox until its first message), so this may reject with a message to show.
+  onSend: (content: string, effort: ThinkingEffort, model: Model, subagentModel: Model | undefined, webSearch: boolean, files: File[]) => void | Promise<void>
   disabled: boolean
   // True specifically while a stream is in flight (a subset of `disabled`,
   // which also covers pendingClarify) — the send button shows Stop instead
@@ -73,6 +77,11 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
   const [effortOpen, setEffortOpen] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
   const [subagentModelOpen, setSubagentModelOpen] = useState(false)
+  const [files, setFiles] = useState<File[]>([])
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const effortRef = useRef<HTMLDivElement>(null)
@@ -86,13 +95,38 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
-  const submit = () => {
-    const trimmed = value.trim()
-    if (!trimmed || disabled || !model) return
+  const addFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return
+    const problems: string[] = []
+    const accepted: File[] = []
+    for (const f of incoming) {
+      const problem = attachmentProblem(f)
+      if (problem) problems.push(problem)
+      else accepted.push(f)
+    }
+    const room = MAX_ATTACHMENTS - files.length
+    if (accepted.length > room) problems.push(`At most ${MAX_ATTACHMENTS} files per message`)
+    setFiles((prev) => [...prev, ...accepted.slice(0, Math.max(room, 0))])
+    setAttachError(problems.length ? problems.join(". ") : null)
+  }
 
-    onSend(trimmed, effort, model, subagentModel ?? undefined, webSearch)
-    setValue("")
-    if (textareaRef.current) textareaRef.current.style.height = "auto"
+  const submit = async () => {
+    const trimmed = value.trim()
+    if ((!trimmed && files.length === 0) || disabled || sending || !model) return
+    const content = trimmed || "Please look at the attached file(s)."
+    setSending(true)
+    setAttachError(null)
+    try {
+      await onSend(content, effort, model, subagentModel ?? undefined, webSearch, files)
+      setValue("")
+      setFiles([])
+      if (textareaRef.current) textareaRef.current.style.height = "auto"
+    } catch (e) {
+      // Keep the text and the files so the user can send again.
+      setAttachError(e instanceof Error ? e.message : "Could not send")
+    } finally {
+      setSending(false)
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -159,7 +193,10 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
 
   const currentEffort = EFFORT_OPTIONS.find((o) => o.value === effort) ?? availableEffortOptions[0]
   const isOverContextWindow = !!model && contextTokens !== undefined && contextTokens >= model.contextWindow
-  const canSend = !disabled && !!model && !isOverContextWindow && value.trim().length > 0
+  // Attached pictures need a model that can see them; say so before sending rather
+  // than after the agent has tried and failed.
+  const imagesNeedVision = !!model && !model.vision && files.some((f) => f.type.startsWith("image/"))
+  const canSend = !disabled && !sending && !!model && !isOverContextWindow && (value.trim().length > 0 || files.length > 0)
 
   return (
     <div className="px-8 pb-7 pt-3">
@@ -171,7 +208,48 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
             </div>
           </div>
         )}
-        <div className="flex flex-col bg-white rounded-3xl px-5 py-3 shadow-sm border border-gray-100/80 gap-2">
+        <div
+          className={cn(
+            "flex flex-col bg-white rounded-3xl px-5 py-3 shadow-sm border gap-2 transition-colors",
+            dragging ? "border-[#5661f6] bg-[#F7F8FF]" : "border-gray-100/80"
+          )}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true) } }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files.length) return
+            e.preventDefault(); setDragging(false)
+            addFiles(Array.from(e.dataTransfer.files))
+          }}
+        >
+          {(files.length > 0 || attachError || imagesNeedVision) && (
+            <div className="flex flex-col gap-1.5">
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-1.5" aria-label="Attached files">
+                  {files.map((f, i) => (
+                    <span key={`${f.name}-${i}`} className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF0FF] pl-2.5 pr-1 py-1 text-[12px] font-medium text-[#3f49d6] max-w-[16rem]">
+                      <FileIcon className="size-3 shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                      <span className="text-[10.5px] font-normal text-[#5661f6]/70 shrink-0">{formatSize(f.size)}</span>
+                      <button
+                        onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                        disabled={sending}
+                        aria-label={`Remove ${f.name}`}
+                        className="rounded-full p-0.5 hover:bg-[#dfe3ff] disabled:opacity-40"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {imagesNeedVision && model && (
+                <p className="text-[12px] text-amber-700" role="status">
+                  {`${model.name} can't look at images. Switch to a model with vision (for example Qwen 3.7+ or Claude Opus 4.8) if you want it to see them.`}
+                </p>
+              )}
+              {attachError && <p className="text-[12px] text-red-600" role="alert">{attachError}</p>}
+            </div>
+          )}
 
           <textarea
             ref={textareaRef}
@@ -179,6 +257,10 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
             value={value}
             onChange={(e) => { setValue(e.target.value); resize() }}
             onKeyDown={onKeyDown}
+            onPaste={(e) => {
+              const pasted = Array.from(e.clipboardData.files)
+              if (pasted.length) { e.preventDefault(); addFiles(pasted) }
+            }}
             placeholder="What's in your mind..."
             className="flex-1 bg-transparent text-[14px] font-medium text-gray-700 placeholder:text-gray-400 placeholder:font-medium outline-none leading-[22px] resize-none overflow-y-auto"
             style={{ maxHeight: "200px" }}
@@ -186,7 +268,27 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId,
           />
 
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            {/* flex-wrap + no-wrap labels: the paperclip made this row too wide, and the pill
+                labels broke onto two lines instead of the row wrapping. */}
+            <div className="flex flex-wrap items-center gap-2 [&_button]:whitespace-nowrap">
+              {/* Attach: the files go into this conversation's sandbox only. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || sending}
+                title="Attach files (they go into this conversation's sandbox)"
+                aria-label="Attach files"
+                className="flex items-center justify-center size-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors disabled:opacity-40"
+              >
+                <Paperclip className="size-3.5" />
+              </button>
+
               {/* Thinking effort selector — options filtered per-model to
                   only levels verified meaningful/safe for it (see
                   Model.effortOptions / AVAILABLE_MODELS for the evidence).

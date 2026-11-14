@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { RotateCcw } from "lucide-react"
 import { useChat, useLoadingThreadIds } from "@/hooks/use-chat"
 import { useConversations } from "@/hooks/use-conversations"
@@ -10,6 +11,7 @@ import { useContextBreakdown } from "@/hooks/use-context-breakdown"
 import { useResearchTasks } from "@/hooks/use-research-tasks"
 import { Sidebar } from "./sidebar"
 import { FileBrowserModal } from "@/components/files/file-browser-modal"
+import { buildAttachmentsBlock, uploadChatFiles } from "@/lib/attachments"
 import { EmptyState } from "./empty-state"
 import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
@@ -27,6 +29,8 @@ export function ChatWindow() {
 
   const { conversations, create, remove, setLastModel, setLastSubagentModel } = useConversations()
   const { models } = useModels()
+  const { data: session } = useSession()
+  const accessToken = session?.accessToken
   const [activeId, setActiveId] = useState<string | null>(null)
   const [filesOpen, setFilesOpen] = useState(false)
   // Global preference, not per-conversation — persisted to localStorage
@@ -139,7 +143,8 @@ export function ChatWindow() {
     effort: import("@/types/chat").ThinkingEffort = "high",
     model?: import("@/types/chat").Model,
     subagentModel?: import("@/types/chat").Model,
-    webSearch: boolean = true
+    webSearch: boolean = true,
+    files: File[] = []
   ) => {
     if (!activeId) {
       pendingContent.current = { content, effort, model, subagentModel, webSearch }
@@ -148,8 +153,25 @@ export function ChatWindow() {
       if (subagentModel) lastSentSubagentModel.current.set(conv.id, subagentModel.id)
       lastSentWebSearch.current.set(conv.id, webSearch)
       _historyLoaded.add(conv.id)  // Mark as loaded so we don't fetch history for brand-new thread
+      if (files.length > 0) {
+        // A new chat has no sandbox until now. Upload into the conversation that was
+        // just created; if that fails, stay in it (so a retry does not create a second
+        // empty one) and drop the queued message so it is not sent without its files.
+        try {
+          const saved = await uploadChatFiles(conv.id, files, accessToken)
+          pendingContent.current = { content: content + buildAttachmentsBlock(saved), effort, model, subagentModel, webSearch }
+        } catch (e) {
+          pendingContent.current = null
+          activate(conv.id)
+          throw e
+        }
+      }
       activate(conv.id)
     } else {
+      if (files.length > 0) {
+        const saved = await uploadChatFiles(activeId, files, accessToken)
+        content += buildAttachmentsBlock(saved)
+      }
       if (model) {
         lastSentModel.current.set(activeId, model.id)
         setLastModel(activeId, model.id)
@@ -238,7 +260,7 @@ export function ChatWindow() {
       <div className="flex flex-1 min-w-0 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">
           {hasMessages ? (
-            <MessageList messages={messages} submitFeedback={submitFeedback} />
+            <MessageList messages={messages} submitFeedback={submitFeedback} threadId={activeId} />
           ) : (
             <EmptyState />
           )}

@@ -166,7 +166,7 @@ async function runStream(body: ReadableStream<Uint8Array>, threadId: string, tar
                 matched = true
                 let label = tool.label
                 if (!label && tool.argsStr) { try { label = JSON.parse(tool.argsStr).label } catch { /**/ } }
-                return { ...p, tool: { ...tool, label, output: event.output, citations: event.citations, status: "done" as const } }
+                return { ...p, tool: { ...tool, label, output: event.output, citations: event.citations, images: event.images, status: "done" as const } }
               }
               return p
             })

@@ -14,6 +14,7 @@ import { Message, MessagePart, ToolCall, TokenUsage } from "@/types/chat"
 import { ToolBadge, ToolGroupBadge } from "./tool-badge"
 import { TodoList } from "./todo-list"
 import { FileAttachment } from "./file-attachment"
+import { splitAttachments } from "@/lib/attachments"
 import { MessageFeedback } from "./message-feedback"
 
 const SvgDiagram = dynamic(
@@ -248,8 +249,10 @@ function UsageFooter({ usage, isStreaming }: { usage: TokenUsage[]; isStreaming:
 export function MessageItem({
   message,
   submitFeedback,
+  threadId,
 }: {
   message: Message
+  threadId?: string | null
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
 }) {
   const [copied, setCopied] = useState(false)
@@ -266,7 +269,7 @@ export function MessageItem({
   }
 
   const copy = async () => {
-    await navigator.clipboard.writeText(plainText)
+    await navigator.clipboard.writeText(message.role === "user" ? splitAttachments(plainText).text : plainText)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -282,14 +285,26 @@ export function MessageItem({
   }
 
   if (message.role === "user") {
+    // Files attached to the message arrive as a block at the end of its text; show
+    // them as file cards (openable while the conversation's sandbox exists).
+    const { text: shownText, files: attached } = splitAttachments(plainText)
     return (
       <div className="flex justify-end group">
         <div className="max-w-[65%]">
           <div className="bg-[#5661f6] rounded-2xl rounded-tr-sm px-4 py-3">
             <p className="text-[14px] font-medium text-white leading-[22px] whitespace-pre-wrap">
-              {plainText}
+              {shownText}
             </p>
           </div>
+          {attached.length > 0 && (
+            <div className="mt-2 space-y-2" aria-label="Attached files">
+              {attached.map((f, i) => threadId ? (
+                <FileAttachment key={`${f.name}-${i}`} part={{ type: "file", name: f.name, mime: f.mime, size: f.size, path: f.name, thread_id: threadId }} />
+              ) : (
+                <span key={`${f.name}-${i}`} className="inline-block rounded-full bg-[#EEF0FF] px-2.5 py-1 text-[12px] text-[#3f49d6]">{f.name}</span>
+              ))}
+            </div>
+          )}
           <div className="flex justify-end mt-1">
             <button
               onClick={copy}

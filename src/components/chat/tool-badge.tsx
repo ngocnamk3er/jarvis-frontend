@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ToolCall } from "@/types/chat"
 import type { LucideIcon } from "lucide-react"
+import { AttachmentImages } from "./attachment-images"
 import { SourceChips } from "./source-chips"
 
 // ── Per-tool display metadata ──────────────────────────────────────────────
@@ -20,7 +21,8 @@ const TOOL_META: Record<string, ToolMeta> = {
   bash:             { label: "Running command",    Icon: Terminal  },
   web_search:       { label: "Searching the web",  Icon: Globe     },
   web_fetch:        { label: "Fetching page",       Icon: Globe     },
-  search_files:     { label: "Searching files",     Icon: Search    },
+  workspace_search_files: { label: "Searching files", Icon: Search },
+  search_files:     { label: "Searching files",     Icon: Search    },   // the name before 2026-11-14, kept for saved conversations
   task:             { label: "Delegating to sub-agent", Icon: Bot   },
   start_research:   { label: "Starting background research", Icon: Bot },
   check_research:   { label: "Checking background research", Icon: Bot },
@@ -321,6 +323,7 @@ export function ToolBadge({
           {children}
           {tool.output !== undefined && <OutputBlock output={tool.output} />}
           {tool.citations && tool.citations.length > 0 && <SourceChips citations={tool.citations} />}
+          {tool.images && tool.images.length > 0 && <AttachmentImages images={tool.images} />}
         </div>
       )}
     </div>
