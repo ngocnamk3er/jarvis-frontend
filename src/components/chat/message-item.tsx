@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
-import { Copy, Check, Brain, ChevronDown, BarChart2, AlertTriangle, OctagonX } from "lucide-react"
+import { Copy, Check, Brain, ChevronDown, BarChart2, AlertTriangle, OctagonX, GitBranch, Pencil } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -250,9 +250,13 @@ export function MessageItem({
   message,
   submitFeedback,
   threadId,
+  onBranch,
 }: {
   message: Message
   threadId?: string | null
+  // Starts a new conversation from this point. On an assistant message it keeps the conversation up to and
+  // including this answer; on a user message it keeps everything before it, so the message can be edited and sent again.
+  onBranch?: () => void
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
 }) {
   const [copied, setCopied] = useState(false)
@@ -305,7 +309,17 @@ export function MessageItem({
               ))}
             </div>
           )}
-          <div className="flex justify-end mt-1">
+          <div className="flex justify-end mt-1 gap-0.5">
+            {onBranch && (
+              <button
+                onClick={onBranch}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-white/60"
+                title="Edit and resend in a new branch"
+                aria-label="Edit and resend in a new branch"
+              >
+                <Pencil className="size-3 text-gray-400" />
+              </button>
+            )}
             <button
               onClick={copy}
               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-white/60"
@@ -502,6 +516,16 @@ export function MessageItem({
           >
             {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
           </button>
+          {onBranch && (
+            <button
+              onClick={onBranch}
+              className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              title="Branch from here"
+              aria-label="Branch from here"
+            >
+              <GitBranch className="size-3" />
+            </button>
+          )}
           {message.trace_id && (
             <MessageFeedback
               traceId={message.trace_id}

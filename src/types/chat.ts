@@ -28,6 +28,10 @@ export type Model = {
   // Real HuggingFace repo path if this model is open-weight (sourced from
   // OpenRouter's own hugging_face_id field), null if closed/proprietary.
   huggingFaceId: string | null
+  // A model the user added themselves (backend user_models.catalog_entry), and the
+  // result of its last connection check: "unchecked" | "ok" | "degraded" | "error".
+  custom?: boolean
+  status?: string
 }
 
 export type ToolStatus = "streaming" | "running" | "done"
@@ -254,6 +258,37 @@ export type McpServer = {
   enabled: boolean | null   // for the conversation asked about; null when none
   tools: string[]
   error: string | null
+}
+
+// One step of a connection check on a model the user added. `ok` is null when
+// the step could not be decided (skipped).
+export type ModelCheckStep = { name: string; ok: boolean | null; detail: string; ms: number }
+
+export type UserModel = {
+  id: string                 // "user:<uuid>", what the chat request carries
+  name: string
+  kind: "openrouter" | "endpoint"
+  model: string              // the name the API is asked for
+  base_url: string | null
+  has_key: boolean           // the key itself never comes back
+  vision: boolean
+  context_window: number
+  send_reasoning: boolean
+  status: "unchecked" | "ok" | "degraded" | "error"
+  checked_at: string | null
+  result: {
+    steps: ModelCheckStep[]
+    capabilities: { tools: boolean | null; vision: boolean | null } | null
+    total_ms: number
+  } | null
+}
+
+export type UserModels = {
+  models: UserModel[]
+  catalog: Model[]           // the same models, shaped for the model picker
+  keys_supported: boolean
+  max_models: number
+  enabled: boolean
 }
 
 export type McpServers = {

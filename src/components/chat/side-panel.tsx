@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, FlaskConical, Gauge, Plug } from "lucide-rea
 import { ContextBreakdown, ResearchTask } from "@/types/chat"
 import { ContextSection } from "./context-panel"
 import { McpSection } from "./mcp-section"
+import { ModelsSection } from "./models-section"
 import { ResearchSection } from "./research-panel"
 
 // The chat's right-hand sidebar: what the context window is made of, and the
@@ -55,6 +56,7 @@ export function SidePanel({
       </div>
       <div className="flex-1 overflow-y-auto">
         {context && <ContextSection {...context} />}
+        <ModelsSection />
         <McpSection threadId={threadId} />
         {tasks.length > 0 && <ResearchSection tasks={tasks} />}
       </div>

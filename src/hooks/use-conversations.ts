@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { apiFetch } from "@/lib/api-client"
+import { useOnApiRecovered } from "@/hooks/use-api-recovery"
 import { Conversation } from "@/types/chat"
 
 export function useConversations() {
@@ -10,17 +11,24 @@ export function useConversations() {
   const accessToken = session?.accessToken
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(false)
+  // The last load did not work (as opposed to there being nothing to load): the list is empty because of that.
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const fetch_ = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
     try {
       const res = await apiFetch("/api/v1/conversations", accessToken)
-      if (!res.ok) return
+      if (!res.ok) {
+        setLoadFailed(true)
+        return
+      }
       const data: Conversation[] = await res.json()
       setConversations(Array.isArray(data) ? data : [])
+      setLoadFailed(false)
     } catch {
-      // backend unavailable — leave list empty
+      // backend unavailable — keep what is on screen (an empty list says so via loadFailed)
+      setLoadFailed(true)
     } finally {
       setLoading(false)
     }
@@ -39,6 +47,22 @@ export function useConversations() {
       const safe = Array.isArray(prev) ? prev : []
       return [conv, ...safe.filter((c) => c.id !== conv.id)]
     })
+    return conv
+  }, [accessToken])
+
+  // A new conversation holding the first `keepTurns` turns of `id` (a turn = a user message and its answer).
+  const fork = useCallback(async (id: string, keepTurns: number): Promise<Conversation> => {
+    const res = await apiFetch(`/api/v1/conversations/${id}/fork`, accessToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keep_turns: keepTurns }),
+    })
+    if (!res.ok) {
+      const detail = await res.json().then((b) => b?.detail).catch(() => null)
+      throw new Error(typeof detail === "string" ? detail : `Could not branch: ${res.status}`)
+    }
+    const conv: Conversation = await res.json()
+    setConversations((prev) => [conv, ...(Array.isArray(prev) ? prev : []).filter((c) => c.id !== conv.id)])
     return conv
   }, [accessToken])
 
@@ -80,5 +104,10 @@ export function useConversations() {
     if (status === "authenticated") fetch_()
   }, [status, fetch_])
 
-  return { conversations, loading, refetch: fetch_, create, remove, updateTitle, setLastModel, setLastSubagentModel }
+  // The load gave up while the backend was busy: do it again once it answers, instead of staying empty.
+  useOnApiRecovered(() => {
+    if (loadFailed) void fetch_()
+  })
+
+  return { conversations, loading, loadFailed, refetch: fetch_, create, fork, remove, updateTitle, setLastModel, setLastSubagentModel }
 }

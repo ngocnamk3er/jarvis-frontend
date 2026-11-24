@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react"
 import { Message } from "@/types/chat"
 import { MessageItem } from "./message-item"
+import { splitAttachments } from "@/lib/attachments"
 
 const NEAR_BOTTOM_THRESHOLD = 120
 
@@ -10,9 +11,12 @@ export function MessageList({
   messages,
   submitFeedback,
   threadId,
+  onBranch,
 }: {
   messages: Message[]
   threadId?: string | null
+  // keepTurns: how many turns of this conversation the branch keeps; draft: the user message to edit, if any.
+  onBranch?: (keepTurns: number, draft?: string) => void
   submitFeedback: (traceId: string, rating: "up" | "down", comment?: string) => Promise<void>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -57,14 +61,28 @@ export function MessageList({
       className="flex-1 overflow-y-auto px-8 py-6"
     >
       <div className="max-w-3xl mx-auto space-y-6">
-        {messages.map((msg) => (
-          <MessageItem
-            key={msg.id}
-            message={msg}
-            submitFeedback={submitFeedback}
-            threadId={threadId}
-          />
-        ))}
+        {messages.map((msg, i) => {
+          // Turns are counted by user messages: a user message is turn N (0-based) and the answer after it ends turn N.
+          const userBefore = messages.slice(0, i).filter((m) => m.role === "user").length
+          let branch: (() => void) | undefined
+          if (onBranch && !isStreaming) {
+            if (msg.role === "user") {
+              const text = splitAttachments(msg.parts.filter((p) => p.type === "text").map((p) => p.content).join("")).text
+              branch = () => onBranch(userBefore, text)
+            } else if (msg.role === "assistant" && userBefore > 0) {
+              branch = () => onBranch(userBefore)
+            }
+          }
+          return (
+            <MessageItem
+              key={msg.id}
+              message={msg}
+              submitFeedback={submitFeedback}
+              threadId={threadId}
+              onBranch={branch}
+            />
+          )
+        })}
         <div ref={bottomRef} />
       </div>
     </div>

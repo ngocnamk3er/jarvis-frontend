@@ -27,12 +27,15 @@ export function ChatWindow() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const { conversations, create, remove, setLastModel, setLastSubagentModel } = useConversations()
+  const { conversations, loadFailed, refetch: refetchConversations, create, fork, remove, setLastModel, setLastSubagentModel } = useConversations()
   const { models } = useModels()
   const { data: session } = useSession()
   const accessToken = session?.accessToken
   const [activeId, setActiveId] = useState<string | null>(null)
   const [filesOpen, setFilesOpen] = useState(false)
+  // A message being edited into a new branch: the text to put in that conversation's input box.
+  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null)
+  const [branchError, setBranchError] = useState<string | null>(null)
   // Global preference, not per-conversation — persisted to localStorage
   // below. Starts false on every load (incl. SSR) and is corrected from
   // storage in a mount effect, since localStorage isn't available server-side.
@@ -58,7 +61,7 @@ export function ChatWindow() {
   // which is triggered from here, not from the input).
   const lastSentWebSearch = useRef<Map<string, boolean>>(new Map())
 
-  const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback } = useChat(activeId)
+  const { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, sendFailed, retrySend, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback } = useChat(activeId)
   const loadingThreadIds = useLoadingThreadIds()
   // Background research started from this conversation. Polled, because a task
   // keeps going after the turn that started it has ended.
@@ -117,6 +120,9 @@ export function ChatWindow() {
   }, [activeId, sendMessage])
 
   function activate(id: string | null) {
+    // A draft belongs to the branch it was made for; leaving that conversation drops it.
+    setDraft((d) => (d && d.id === id ? d : null))
+    setBranchError(null)
     setActiveId(id)
     router.replace(id ? `/?c=${id}` : "/")
   }
@@ -128,6 +134,22 @@ export function ChatWindow() {
   const handleSelectConversation = async (id: string) => {
     activate(id)
     await openConversation(id)
+  }
+
+  // Branch off the open conversation: a new conversation with its first `keepTurns` turns, opened ready to
+  // continue (with the user's message in the box when it is being edited). The original stays as it is.
+  const handleBranch = async (keepTurns: number, draftText?: string) => {
+    if (!activeId) return
+    setBranchError(null)
+    try {
+      const conv = await fork(activeId, keepTurns)
+      _historyLoaded.add(conv.id)
+      setDraft(draftText ? { id: conv.id, text: draftText } : null)
+      activate(conv.id)
+      await loadHistory(conv.id)
+    } catch (e) {
+      setBranchError(e instanceof Error ? e.message : "Could not branch")
+    }
   }
 
   const handleDeleteConversation = async (id: string) => {
@@ -253,6 +275,8 @@ export function ChatWindow() {
         onSelect={handleSelectConversation}
         onDelete={handleDeleteConversation}
         onOpenFiles={() => setFilesOpen(true)}
+        loadFailed={loadFailed}
+        onRetryLoad={refetchConversations}
       />
 
       <FileBrowserModal open={filesOpen} onClose={() => setFilesOpen(false)} />
@@ -260,7 +284,7 @@ export function ChatWindow() {
       <div className="flex flex-1 min-w-0 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">
           {hasMessages ? (
-            <MessageList messages={messages} submitFeedback={submitFeedback} threadId={activeId} />
+            <MessageList messages={messages} submitFeedback={submitFeedback} threadId={activeId} onBranch={handleBranch} />
           ) : (
             <EmptyState />
           )}
@@ -295,8 +319,32 @@ export function ChatWindow() {
             </div>
           )}
 
+          {sendFailed && !isLoading && (
+            <div className="flex justify-center pb-2" role="alert">
+              <div className="flex items-center gap-2.5 bg-white border border-amber-200 text-amber-700 rounded-full px-4 py-2 text-[12px] shadow-sm">
+                <span>Your message was not sent</span>
+                <button
+                  onClick={() => retrySend()}
+                  className="flex items-center gap-1 font-semibold hover:text-amber-900 transition-colors"
+                >
+                  <RotateCcw className="size-3" />
+                  Send again
+                </button>
+              </div>
+            </div>
+          )}
+
+          {branchError && (
+            <div className="flex justify-center pb-2">
+              <div className="bg-white border border-red-200 text-red-600 rounded-full px-4 py-2 text-[12px] shadow-sm">
+                {branchError}
+              </div>
+            </div>
+          )}
+
           <ChatInput
             key={activeId}
+            initialValue={draft && draft.id === activeId ? draft.text : undefined}
             onSend={handleSend}
             disabled={isLoading || !!pendingHitl || !!pendingClarify}
             isLoading={isLoading}

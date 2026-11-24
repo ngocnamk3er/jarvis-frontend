@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { apiFetch } from "@/lib/api-client"
+import { canResendChat } from "@/lib/api-resilience"
 import { Message, MessagePart, StreamEvent, ThinkingEffort, ToolCall, Model, PendingHitl, PendingClarify } from "@/types/chat"
 
 // ── Module-level per-thread storage (persists across conversation switches) ──
@@ -23,6 +24,22 @@ const _contextTokens = new Map<string, number>()
 
 // Per-thread re-render subscribers
 const _subs = new Map<string, Set<() => void>>()
+
+// What to tell the user when the server answered a chat request with an error status. 409 is the backend's
+// per-conversation run lock: another tab (or request) is still running on this conversation.
+function failureText(res: Response | null, fallback: string): string {
+  if (res?.status === 409) return "This conversation is already running (in another tab or window). Wait for it to finish, then try again."
+  // The backend refuses a new run when it is already running as many as it can (503), or when this user is sending too
+  // fast (429). Nothing was started, so sending the same message again in a moment is safe.
+  if (res?.status === 503) return "The server is busy right now, so your message was not sent. Wait a few seconds and send it again."
+  if (res?.status === 429) return "You're sending messages too quickly. Wait a moment, then send it again."
+  return fallback
+}
+
+// A send the server refused (or never answered), kept so the user can send exactly the same thing again with one click.
+// `content` already carries any attachments block, so nothing is lost or uploaded twice. Cleared when the next send starts.
+type FailedSend = { content: string; effort: ThinkingEffort; model?: Model; subagentModel?: Model; webSearch: boolean; userId: string; assistantId: string }
+const _failedSend = new Map<string, FailedSend | null>()
 
 // Global loading-change subscribers (for sidebar indicator)
 const _loadingSubs = new Set<() => void>()
@@ -290,6 +307,7 @@ export function useChat(threadId: string | null) {
   const pendingClarify = threadId ? (_clarify.get(threadId) ?? null) : null
   const interrupted = threadId ? (_interrupted.get(threadId) ?? false) : false
   const stopped = threadId ? (_stopped.get(threadId) ?? false) : false
+  const sendFailed = threadId ? !!_failedSend.get(threadId) : false
   const contextTokens = threadId ? (_contextTokens.get(threadId) ?? null) : null
 
   const loadHistory = useCallback(async (id: string): Promise<boolean> => {
@@ -342,6 +360,7 @@ export function useChat(threadId: string | null) {
       _clarify.set(threadId, null)
       _interrupted.set(threadId, false)
       _stopped.set(threadId, false)
+      _failedSend.set(threadId, null)
 
       const userMsg: Message = { id: makeId(), role: "user", parts: [{ type: "text", content }], isStreaming: false }
       const assistantId = makeId()
@@ -362,10 +381,13 @@ export function useChat(threadId: string | null) {
         }),
       }).catch(() => null)
 
-      if (!res?.body) {
+      if (!res?.body || !res.ok) {
         _msgs.set(threadId, (_msgs.get(threadId) ?? []).map(m =>
-          m.id === assistantId ? { ...m, parts: [{ type: "text" as const, content: "Failed to connect to server." }], isStreaming: false } : m
+          m.id === assistantId ? { ...m, parts: [{ type: "text" as const, content: failureText(res, "Failed to connect to server.") }], isStreaming: false } : m
         ))
+        if (canResendChat(res ? res.status : null)) {
+          _failedSend.set(threadId, { content, effort: thinking_effort, model, subagentModel, webSearch, userId: userMsg.id, assistantId })
+        }
         _notify(threadId)
         return
       }
@@ -373,6 +395,17 @@ export function useChat(threadId: string | null) {
     },
     [threadId, accessToken, _doStream]
   )
+
+  // Send the refused message again, exactly as it was. The failed pair is removed first so it is not shown twice.
+  const retrySend = useCallback(async () => {
+    if (!threadId) return
+    const failed = _failedSend.get(threadId)
+    if (!failed) return
+    _failedSend.set(threadId, null)
+    _msgs.set(threadId, (_msgs.get(threadId) ?? []).filter(m => m.id !== failed.userId && m.id !== failed.assistantId))
+    _notify(threadId)
+    await sendMessage(failed.content, failed.effort, failed.model, failed.subagentModel, failed.webSearch)
+  }, [threadId, sendMessage])
 
   const resumeMessage = useCallback(
     async (decision: "approve" | "reject", model?: Model, subagentModel?: Model, webSearch: boolean = true) => {
@@ -416,9 +449,9 @@ export function useChat(threadId: string | null) {
         }),
       }).catch(() => null)
 
-      if (!res?.body) {
+      if (!res?.body || !res.ok) {
         _msgs.set(threadId, (_msgs.get(threadId) ?? []).map(m =>
-          m.id === resumeId ? { ...m, parts: [...m.parts, { type: "text" as const, content: "Failed to resume." }], isStreaming: false } : m
+          m.id === resumeId ? { ...m, parts: [...m.parts, { type: "text" as const, content: failureText(res, "Failed to resume.") }], isStreaming: false } : m
         ))
         _notify(threadId)
         return
@@ -468,9 +501,9 @@ export function useChat(threadId: string | null) {
         }),
       }).catch(() => null)
 
-      if (!res?.body) {
+      if (!res?.body || !res.ok) {
         _msgs.set(threadId, (_msgs.get(threadId) ?? []).map(m =>
-          m.id === resumeId ? { ...m, parts: [...m.parts, { type: "text" as const, content: "Failed to resume." }], isStreaming: false } : m
+          m.id === resumeId ? { ...m, parts: [...m.parts, { type: "text" as const, content: failureText(res, "Failed to resume.") }], isStreaming: false } : m
         ))
         _notify(threadId)
         return
@@ -510,7 +543,7 @@ export function useChat(threadId: string | null) {
     [threadId, accessToken]
   )
 
-  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback }
+  return { messages, isLoading, pendingHitl, pendingClarify, interrupted, stopped, sendFailed, retrySend, contextTokens, sendMessage, resumeMessage, resumeClarify, stopMessage, loadHistory, submitFeedback }
 }
 
 // ── Sidebar loading hook ───────────────────────────────────────────────────────

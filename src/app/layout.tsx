@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google"
 import "./globals.css"
 import { auth } from "@/auth"
 import { AuthSessionProvider } from "@/components/providers/session-provider"
+import { SystemStatusBanner } from "@/components/system-status-banner"
 
 const jakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -25,6 +26,7 @@ export default async function RootLayout({
     <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <AuthSessionProvider session={session}>{children}</AuthSessionProvider>
+        <SystemStatusBanner />
       </body>
     </html>
   )

@@ -53,6 +53,8 @@ type Props = {
   // subagent's), so leaving this unset is not a degraded state.
   initialSubagentModelId?: string | null
   hasMessages?: boolean
+  // Text to start with in the box, e.g. a message being edited into a new branch. Read once, on mount.
+  initialValue?: string
   // Current context size (see backend Conversation.context_tokens) — shown
   // as a pill, and compared against the selected model's own contextWindow
   // to hard-block sending once the conversation is full for that model.
@@ -65,9 +67,9 @@ type Props = {
   onToggleAutoApproveBash?: () => void
 }
 
-export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId, initialSubagentModelId, hasMessages, contextTokens, autoApproveBash, onToggleAutoApproveBash }: Props) {
+export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId, initialSubagentModelId, hasMessages, initialValue, contextTokens, autoApproveBash, onToggleAutoApproveBash }: Props) {
   const { models } = useModels()
-  const [value, setValue] = useState("")
+  const [value, setValue] = useState(initialValue ?? "")
   const [effort, setEffort] = useState<ThinkingEffort>("high")
   // Off strips web_search + web_fetch from the agent (and the research
   // subagent) for the turn — see ChatRequest.web_search in the backend.

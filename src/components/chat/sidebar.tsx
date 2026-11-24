@@ -30,6 +30,9 @@ type Props = {
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onOpenFiles: () => void
+  // The list is empty because loading it failed, not because there is nothing: say so, and offer to try again.
+  loadFailed?: boolean
+  onRetryLoad?: () => void
 }
 
 function SpinnerIcon({ className }: { className?: string }) {
@@ -41,7 +44,7 @@ function SpinnerIcon({ className }: { className?: string }) {
   )
 }
 
-export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, onSelect, onDelete, onOpenFiles }: Props) {
+export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, onSelect, onDelete, onOpenFiles, loadFailed, onRetryLoad }: Props) {
   const { data: session } = useSession()
   const displayName = session?.user?.name ?? session?.user?.email ?? "Account"
   const initial = displayName.charAt(0).toUpperCase()
@@ -104,7 +107,17 @@ export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, 
           </>
         )}
 
-        {conversations.length === 0 && (
+        {conversations.length === 0 && loadFailed && (
+          <div className="px-2 mt-2 text-[12px] text-gray-400">
+            <p>Couldn&apos;t load your conversations.</p>
+            {onRetryLoad && (
+              <button onClick={onRetryLoad} className="mt-1 font-medium text-[#5661f6] hover:underline">
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+        {conversations.length === 0 && !loadFailed && (
           <p className="px-2 text-[12px] text-gray-400 mt-2">No conversations yet</p>
         )}
       </div>
