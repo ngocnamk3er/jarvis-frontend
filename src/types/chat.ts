@@ -112,7 +112,8 @@ export type MessagePart =
   | { type: "file"; name: string; mime: string; size: number; path: string; thread_id: string; task_run_id?: string }
   | { type: "todos"; todos: Todo[]; task_run_id?: string }
   // Emitted when SoftHardToolCallLimitMiddleware blocks a call — "soft" means
-  // blocked but the run continues, "hard" means blocked and the run stopped.
+  // blocked but the run continues, "hard" means blocked and no more tool calls:
+  // the model answers with what it already has.
   | {
       type: "tool_limit"
       tool_name: string

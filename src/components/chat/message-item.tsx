@@ -140,7 +140,8 @@ function renderToolItems(parts: MessagePart[], byTaskRunId: Map<string, MessageP
 }
 
 // Shown when SoftHardToolCallLimitMiddleware blocks a call — "soft" means the
-// run kept going, "hard" means it stopped right there.
+// run kept going, "hard" means no more tool calls: the model answers with what
+// it already has.
 function ToolLimitNotice({ part }: { part: MessagePart & { type: "tool_limit" } }) {
   const isHard = part.level === "hard"
   return (
@@ -156,7 +157,7 @@ function ToolLimitNotice({ part }: { part: MessagePart & { type: "tool_limit" } 
         {isHard ? "Hard limit" : "Soft limit"} reached for{" "}
         <span className="font-mono">{part.tool_name}</span> ({part.count}/{part.limit} calls/run) —{" "}
         {part.blocked} call{part.blocked === 1 ? "" : "s"} blocked
-        {isHard ? ", run stopped" : ""}
+        {isHard ? ", answering with what it has" : ""}
       </span>
     </div>
   )
