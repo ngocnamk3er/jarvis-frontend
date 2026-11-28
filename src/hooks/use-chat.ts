@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { apiFetch } from "@/lib/api-client"
 import { canResendChat } from "@/lib/api-resilience"
+import { applyFlowNode, settleFlowSteps } from "@/lib/flow-steps"
 import { Message, MessagePart, StreamEvent, ThinkingEffort, ToolCall, Model, PendingHitl, PendingClarify } from "@/types/chat"
 
 // ── Module-level per-thread storage (persists across conversation switches) ──
@@ -268,13 +269,17 @@ async function runStream(body: ReadableStream<Uint8Array>, threadId: string, tar
           _notify(threadId)
           break
 
+        case "flow_node":
+          updateMsg((m) => ({ ...m, parts: applyFlowNode(m.parts, event) }))
+          break
+
         case "stopped":
           _stopped.set(threadId, true)
-          updateMsg((m) => ({ ...m, isStreaming: false, parts: m.parts.map(p => p.type === "thinking" ? { ...p, isStreaming: false } : p) }))
+          updateMsg((m) => ({ ...m, isStreaming: false, parts: settleFlowSteps(m.parts.map(p => p.type === "thinking" ? { ...p, isStreaming: false } : p)) }))
           break
 
         case "done":
-          updateMsg((m) => ({ ...m, isStreaming: false, parts: m.parts.map(p => p.type === "thinking" ? { ...p, isStreaming: false } : p) }))
+          updateMsg((m) => ({ ...m, isStreaming: false, parts: settleFlowSteps(m.parts.map(p => p.type === "thinking" ? { ...p, isStreaming: false } : p)) }))
           break
 
         case "error":

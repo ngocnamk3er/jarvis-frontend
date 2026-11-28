@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import {
   ChevronDown, ChevronRight, Download, Loader2,
-  Terminal, Globe, Wrench, Layers, Bot, Search,
+  Terminal, Globe, Wrench, Layers, Bot, Search, Workflow,
 } from "lucide-react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -31,6 +31,8 @@ const TOOL_META: Record<string, ToolMeta> = {
 }
 
 function getMeta(name: string): ToolMeta {
+  // A flow the user built: the badge's label is the flow's own name ("Flow: ..."), set by the backend.
+  if (name.startsWith("flow_")) return { label: "Running flow", Icon: Workflow }
   return TOOL_META[name] ?? { label: name, Icon: Wrench }
 }
 

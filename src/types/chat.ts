@@ -123,6 +123,16 @@ export type MessagePart =
       blocked: number
       task_run_id?: string
     }
+  // A step of a flow the model ran (a `flow_<slug>` tool), nested under that flow's badge. `output` is what the
+  // step produced (an LLM step: { text }), set once it is done.
+  | {
+      type: "flow_step"
+      node: string
+      node_type: string
+      status: "running" | "done"
+      output?: Record<string, unknown>
+      task_run_id?: string
+    }
 
 export type TokenUsage = {
   input_tokens: number
@@ -177,6 +187,14 @@ export type StreamEvent =
       count: number
       limit: number
       blocked: number
+      task_run_id?: string
+    }
+  | {
+      type: "flow_node"
+      node: string
+      node_type: string
+      phase: "start" | "end"
+      output?: Record<string, unknown>
       task_run_id?: string
     }
   | { type: "hitl_request"; actions: HitlAction[]; review_configs: HitlReviewConfig[] }

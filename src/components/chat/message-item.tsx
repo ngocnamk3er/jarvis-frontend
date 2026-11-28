@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
-import { Copy, Check, Brain, ChevronDown, BarChart2, AlertTriangle, OctagonX, GitBranch, Pencil } from "lucide-react"
+import { Copy, Check, Brain, ChevronDown, ChevronRight, BarChart2, AlertTriangle, OctagonX, GitBranch, Pencil, Loader2, Sparkles } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -12,6 +12,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { Message, MessagePart, ToolCall, TokenUsage } from "@/types/chat"
 import { ToolBadge, ToolGroupBadge } from "./tool-badge"
+import { SHOWN_STEP_TYPES, stepText } from "@/lib/flow-steps"
 import { TodoList } from "./todo-list"
 import { FileAttachment } from "./file-attachment"
 import { splitAttachments } from "@/lib/attachments"
@@ -68,7 +69,8 @@ function splitNestedTools(parts: MessagePart[]): { topLevel: MessagePart[]; byTa
   const byTaskRunId = new Map<string, MessagePart[]>()
   for (const part of parts) {
     const taskRunId = part.type === "tool" ? part.tool.task_run_id
-      : part.type === "todos" || part.type === "viz" || part.type === "tool_limit" || part.type === "file" ? part.task_run_id
+      : part.type === "todos" || part.type === "viz" || part.type === "tool_limit" || part.type === "file"
+        || part.type === "flow_step" ? part.task_run_id
       : undefined
     if (taskRunId) {
       const arr = byTaskRunId.get(taskRunId) ?? []
@@ -135,8 +137,39 @@ function renderToolItems(parts: MessagePart[], byTaskRunId: Map<string, MessageP
     if (item.kind === "other" && item.part.type === "file") {
       return <FileAttachment key={ri} part={item.part} />
     }
+    if (item.kind === "other" && item.part.type === "flow_step") {
+      return SHOWN_STEP_TYPES.has(item.part.node_type) ? <FlowStepRow key={ri} part={item.part} /> : null
+    }
     return null
   })
+}
+
+// One step of a flow the model ran, under the flow's badge: the step's id, and what it wrote once it is done.
+function FlowStepRow({ part }: { part: MessagePart & { type: "flow_step" } }) {
+  const [open, setOpen] = useState(false)
+  const text = stepText(part)
+  return (
+    <div className="py-0.5 text-[12px]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={!text}
+        className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 disabled:cursor-default disabled:hover:text-gray-600"
+      >
+        {part.status === "running"
+          ? <Loader2 className="size-3 shrink-0 animate-spin text-gray-400" />
+          : <Sparkles className="size-3 shrink-0 text-[#5661f6]" />}
+        <span className="font-medium">Step <span className="font-mono">{part.node}</span></span>
+        <span className="text-gray-400">· model</span>
+        {text && (open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />)}
+      </button>
+      {open && text && (
+        <div className="mt-1 ml-4 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-gray-50 px-2 py-1.5 text-gray-700">
+          {text}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Shown when SoftHardToolCallLimitMiddleware blocks a call — "soft" means the
@@ -393,6 +426,11 @@ export function MessageItem({
 
           if (part.type === "file") {
             return <FileAttachment key={ri} part={part} />
+          }
+
+          if (part.type === "flow_step") {
+            // Always nested under its flow's badge; only one that lost its flow would get here.
+            return SHOWN_STEP_TYPES.has(part.node_type) ? <FlowStepRow key={ri} part={part} /> : null
           }
 
           if (part.type === "viz") {
