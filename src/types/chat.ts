@@ -44,6 +44,9 @@ export type ToolStatus = "streaming" | "running" | "done"
 export type Citation = {
   file_id: string
   path: string
+  // Which files it is in: "personal", or a department's "dept:<slug>" (its path then starts "/@<department>/").
+  // Absent on citations saved before department spaces existed.
+  space?: string
   page_start: number
   page_end: number
   // [[page, [x0, top, x1, bottom]], ...] — fractions of the page (0..1,

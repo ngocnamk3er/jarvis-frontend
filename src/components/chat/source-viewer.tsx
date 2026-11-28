@@ -224,7 +224,7 @@ function TextExcerpt({ node, citation }: { node: FileNodeDetail; citation: Citat
 }
 
 export function SourceViewer({ citation, onClose }: Props) {
-  const { getNode, fetchContent } = useFiles()
+  const { getNode, fetchContent } = useFiles(citation.space)
   const [node, setNode] = useState<FileNodeDetail | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [loading, setLoading] = useState(true)

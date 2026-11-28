@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import {
   ArrowLeft,
+  Building2,
   ChevronRight,
   Download,
+  Eye,
   File,
   Folder,
   FolderPlus,
@@ -12,11 +14,12 @@ import {
   Pencil,
   Trash2,
   Upload,
+  User,
   X,
 } from "lucide-react"
 import { useFiles } from "@/hooks/use-files"
 import { formatSize, triggerDownload } from "@/lib/download"
-import { FileNode } from "@/types/files"
+import { FileNode, FileSpace, PERSONAL_SPACE } from "@/types/files"
 
 type Props = {
   open: boolean
@@ -37,8 +40,14 @@ function splitPath(path: string): string[] {
   return path.split("/").filter(Boolean)
 }
 
+const OWN_FILES: FileSpace = { id: PERSONAL_SPACE, name: "My files", kind: "personal", can_edit: true }
+
 export function FileBrowserModal({ open, onClose }: Props) {
-  const { loading, listTree, createFolder, uploadFile, getNode, fetchContent, renameNode, deleteNode } = useFiles()
+  // Whose files are shown: the user's own, or one of their departments' (GET /files/spaces).
+  const [space, setSpace] = useState(PERSONAL_SPACE)
+  const [spaces, setSpaces] = useState<FileSpace[]>([])
+  const { loading, listSpaces, listTree, createFolder, uploadFile, getNode, fetchContent, renameNode, deleteNode } =
+    useFiles(space)
   const [path, setPath] = useState("/")
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [creatingFolder, setCreatingFolder] = useState(false)
@@ -66,7 +75,12 @@ export function FileBrowserModal({ open, onClose }: Props) {
       refresh()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, path])
+  }, [open, path, space])
+
+  // Which spaces there are, fetched each time the modal opens: department membership lives in Keycloak and can change.
+  useEffect(() => {
+    if (open) listSpaces().then(setSpaces)
+  }, [open, listSpaces])
 
   // Object URLs are only released by the browser when explicitly revoked —
   // release whichever one is showing as soon as it's replaced or the modal
@@ -80,6 +94,14 @@ export function FileBrowserModal({ open, onClose }: Props) {
   if (!open) return null
 
   const segments = splitPath(path)
+  const current = spaces.find((s) => s.id === space) ?? OWN_FILES
+  const canEdit = current.can_edit
+
+  function openSpace(id: string) {
+    setSpace(id)
+    setPath("/")
+    setCreatingFolder(false)
+  }
 
   async function handleCreateFolder() {
     const name = newFolderName.trim()
@@ -180,6 +202,30 @@ export function FileBrowserModal({ open, onClose }: Props) {
           </button>
         </div>
 
+        {spaces.length > 1 && !previewNode && (
+          <div role="tablist" aria-label="Document spaces" className="flex gap-1 overflow-x-auto border-b border-gray-100 px-4 py-2">
+            {spaces.map((s) => {
+              const selected = s.id === space
+              return (
+                <button
+                  key={s.id}
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => openSpace(s.id)}
+                  title={s.kind === "department" ? (s.can_edit ? `${s.name}: you can add and change documents` : `${s.name}: view only`) : "Only you see these"}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${
+                    selected ? "bg-[#5661f6]/10 text-[#5661f6]" : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                  }`}
+                >
+                  {s.kind === "department" ? <Building2 className="size-3.5" /> : <User className="size-3.5" />}
+                  {s.name}
+                  {!s.can_edit && <Eye className="size-3 opacity-60" aria-label="view only" />}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {previewNode ? (
           <>
             <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-2.5">
@@ -234,7 +280,7 @@ export function FileBrowserModal({ open, onClose }: Props) {
           <>
             <div className="flex items-center gap-1 border-b border-gray-100 px-5 py-2.5 text-[13px] text-gray-500">
               <button onClick={() => setPath("/")} className="rounded px-1.5 py-0.5 hover:bg-gray-50 hover:text-gray-900">
-                workspace
+                {space === PERSONAL_SPACE ? "workspace" : current.name}
               </button>
               {segments.map((seg, i) => (
                 <span key={i} className="flex items-center gap-1">
@@ -295,20 +341,24 @@ export function FileBrowserModal({ open, onClose }: Props) {
                           <Download className="size-3.5" />
                         </button>
                       )}
-                      <button
-                        onClick={() => handleRename(node)}
-                        className="rounded p-1 text-gray-400 hover:text-gray-700"
-                        title="Rename"
-                      >
-                        <Pencil className="size-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(node)}
-                        className="rounded p-1 text-gray-400 hover:text-red-500"
-                        title="Delete"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => handleRename(node)}
+                            className="rounded p-1 text-gray-400 hover:text-gray-700"
+                            title="Rename"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(node)}
+                            className="rounded p-1 text-gray-400 hover:text-red-500"
+                            title="Delete"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -339,7 +389,14 @@ export function FileBrowserModal({ open, onClose }: Props) {
           <div className="border-t border-red-100 bg-red-50 px-5 py-2 text-[12px] text-red-600">{error}</div>
         )}
 
-        {!previewNode && (
+        {!previewNode && !canEdit && (
+          <div className="flex items-center gap-2 border-t border-gray-100 px-5 py-3 text-[12px] text-gray-500">
+            <Eye className="size-3.5 shrink-0" />
+            View only. {current.name}&apos;s editors add and change its documents.
+          </div>
+        )}
+
+        {!previewNode && canEdit && (
           <div className="flex items-center gap-2 border-t border-gray-100 px-5 py-3">
             <button
               onClick={() => setCreatingFolder(true)}
