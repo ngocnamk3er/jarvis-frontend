@@ -1,8 +1,9 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, FlaskConical, Gauge, Plug } from "lucide-react"
+import { ChevronLeft, ChevronRight, FlaskConical, Gauge, Plug, Workflow } from "lucide-react"
 import { ContextBreakdown, ResearchTask } from "@/types/chat"
 import { ContextSection } from "./context-panel"
+import { FlowsSection } from "./flows-section"
 import { McpSection } from "./mcp-section"
 import { ModelsSection } from "./models-section"
 import { ResearchSection } from "./research-panel"
@@ -33,6 +34,7 @@ export function SidePanel({
         </button>
         {context && <Gauge className="size-4 text-gray-400" />}
         <Plug className="size-4 text-gray-400" />
+        <Workflow className="size-4 text-gray-400" />
         {tasks.length > 0 && <FlaskConical className="size-4 text-gray-400" />}
         {running > 0 && (
           <span className="flex size-5 items-center justify-center rounded-full bg-[#5661f6] text-[10px] font-semibold text-white">
@@ -58,6 +60,7 @@ export function SidePanel({
         {context && <ContextSection {...context} />}
         <ModelsSection />
         <McpSection threadId={threadId} />
+        <FlowsSection />
         {tasks.length > 0 && <ResearchSection tasks={tasks} />}
       </div>
     </aside>

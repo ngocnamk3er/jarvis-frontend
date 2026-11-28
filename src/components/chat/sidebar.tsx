@@ -1,6 +1,7 @@
 "use client"
 
-import { FolderOpen, KeyRound, LogOut, MessageSquare, Plus, Search, Trash2, UserRound } from "lucide-react"
+import { FolderOpen, KeyRound, LogOut, MessageSquare, Plus, Search, Trash2, UserRound, Workflow } from "lucide-react"
+import Link from "next/link"
 import { useSession, signIn } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/logout"
@@ -130,6 +131,13 @@ export function Sidebar({ conversations, activeId, loadingThreadIds, onNewChat, 
           <FolderOpen className="size-3.5 opacity-70" />
           Files
         </button>
+        <Link
+          href="/flows"
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+        >
+          <Workflow className="size-3.5 opacity-70" />
+          Flows
+        </Link>
         <button
           onClick={editProfile}
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:bg-gray-50 transition-colors"
