@@ -371,6 +371,7 @@ export function ChatWindow() {
 
         <SidePanel
           threadId={activeId}
+          isLoading={isLoading}
           tasks={researchTasks}
           open={sideOpen}
           onToggle={() => setResearchCollapsedAt(sideOpen ? researchTasks.length : null)}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react"
+import { INSERT_INTO_MESSAGE } from "@/lib/sandbox-files-api"
 import { SendHorizontal, Square, Loader2, Brain, ChevronDown, Check, Cpu, Bot, Unlock, Globe, Terminal, Paperclip, X, File as FileIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThinkingEffort, Model } from "@/types/chat"
@@ -70,6 +71,15 @@ type Props = {
 export function ChatInput({ onSend, disabled, isLoading, onStop, initialModelId, initialSubagentModelId, hasMessages, initialValue, contextTokens, autoApproveBash, onToggleAutoApproveBash }: Props) {
   const { models } = useModels()
   const [value, setValue] = useState(initialValue ?? "")
+  // The Sandbox panel's "mention in the message" adds a file's path to what is being written.
+  useEffect(() => {
+    const add = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail
+      setValue((v) => (v && !/\s$/.test(v) ? `${v} ${text}` : `${v}${text}`))
+    }
+    window.addEventListener(INSERT_INTO_MESSAGE, add)
+    return () => window.removeEventListener(INSERT_INTO_MESSAGE, add)
+  }, [])
   const [effort, setEffort] = useState<ThinkingEffort>("high")
   // Off strips web_search + web_fetch from the agent (and the research
   // subagent) for the turn — see ChatRequest.web_search in the backend.

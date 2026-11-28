@@ -1,20 +1,22 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, FlaskConical, Gauge, Plug, Workflow } from "lucide-react"
+import { ChevronLeft, ChevronRight, FlaskConical, Gauge, HardDrive, Plug, Workflow } from "lucide-react"
 import { ContextBreakdown, ResearchTask } from "@/types/chat"
 import { ContextSection } from "./context-panel"
 import { FlowsSection } from "./flows-section"
 import { McpSection } from "./mcp-section"
 import { ModelsSection } from "./models-section"
 import { ResearchSection } from "./research-panel"
+import { SandboxSection } from "./sandbox-section"
 
 // The chat's right-hand sidebar: what the context window is made of, and the
 // background research tasks started from this conversation. Collapses to a
 // thin strip; hidden below lg, where there is no room beside the chat.
 export function SidePanel({
-  tasks, open, onToggle, context, threadId,
+  tasks, open, onToggle, context, threadId, isLoading = false,
 }: {
   threadId: string | null
+  isLoading?: boolean
   tasks: ResearchTask[]
   open: boolean
   onToggle: () => void
@@ -33,6 +35,7 @@ export function SidePanel({
           <ChevronLeft className="size-4" />
         </button>
         {context && <Gauge className="size-4 text-gray-400" />}
+        {threadId && <HardDrive className="size-4 text-gray-400" />}
         <Plug className="size-4 text-gray-400" />
         <Workflow className="size-4 text-gray-400" />
         {tasks.length > 0 && <FlaskConical className="size-4 text-gray-400" />}
@@ -58,6 +61,7 @@ export function SidePanel({
       </div>
       <div className="flex-1 overflow-y-auto">
         {context && <ContextSection {...context} />}
+        {threadId && <SandboxSection key={threadId} threadId={threadId} isLoading={isLoading} />}
         <ModelsSection />
         <McpSection threadId={threadId} />
         <FlowsSection />
